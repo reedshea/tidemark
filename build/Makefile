@@ -19,7 +19,7 @@ endif
 SRCS = $(COMMON_SRCS) $(PLATFORM_SRCS)
 
 # Object files
-OBJS = $(SRCS:.c=.o)
+OBJS = $(notdir $(SRCS:.c=.o))
 
 # Default target
 all: $(BIN)
@@ -28,12 +28,21 @@ all: $(BIN)
 $(BIN): $(OBJS)
 	$(CC) $(COMMON_FLAGS) $^ -o $@ $(PLATFORM_FLAGS)
 
-# Compile rule
-%.o: %.c
+# Compile rules for files in subdirectories
+%.o: ../src/%.c
+	$(CC) $(COMMON_FLAGS) $(PLATFORM_FLAGS) -c $< -o $@
+
+%.o: ../src/display/%.c
+	$(CC) $(COMMON_FLAGS) $(PLATFORM_FLAGS) -c $< -o $@
+
+%.o: ../sim/%.c
+	$(CC) $(COMMON_FLAGS) $(PLATFORM_FLAGS) -c $< -o $@
+
+%.o: ../lib/IT8951/%.c
 	$(CC) $(COMMON_FLAGS) $(PLATFORM_FLAGS) -c $< -o $@
 
 # Clean build artifacts
 clean:
-	rm -f tidemark tidemark_sim $(wildcard ../src/*.o) $(wildcard ../lib/IT8951/*.o)  # Adjusted paths
+	rm -f tidemark tidemark_sim *.o
 
 .PHONY: all clean
