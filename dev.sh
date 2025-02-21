@@ -1,6 +1,8 @@
 #!/bin/bash
-# Sync files to Pi
-rsync -av --exclude '.git' --exclude '*.o' --exclude 'tidemark' --exclude 'tidemark_sim' ./ reed@10.10.10.76:~/tidemark/
+set -e  # Exit on error
 
-# Build and run the main program
-ssh reed@10.10.10.76 "cd tidemark && make clean && PLATFORM=linux make && sudo ./tidemark"
+# Sync files to Pi
+rsync -av --exclude '.git' --exclude '*.o' --exclude 'tidemark' --exclude 'tidemark_sim' ./ reed@10.10.10.76:~/tidemark/ || { echo "Sync failed"; exit 1; }
+
+# Build and run on Pi
+ssh reed@10.10.10.76 "cd tidemark/build && make clean && make && sudo ./tidemark" || { echo "Build or run failed"; exit 1; }

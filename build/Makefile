@@ -1,20 +1,17 @@
-# Compiler settings
 CC = gcc
-
-# Flags
-COMMON_FLAGS = -Wall -Wextra -I./src -I./lib/IT8951
+COMMON_FLAGS = -Wall -Wextra -I../src -I../lib/IT8951  # Adjusted paths from /build/
 
 # Source files
-COMMON_SRCS = src/graph.c src/display/display_layer.c src/main.c
+COMMON_SRCS = ../src/graph.c ../src/display/display_layer.c ../src/main.c  # Adjusted paths
 
 # Platform-specific settings
 ifeq ($(PLATFORM),macos)
     PLATFORM_FLAGS = -I/opt/homebrew/include/SDL2 -L/opt/homebrew/lib -lSDL2 -lSDL2_ttf -DPLATFORM_MACOS
-    PLATFORM_SRCS = src/display_sdl.c
+    PLATFORM_SRCS = ../src/display_sdl.c  # Adjusted path
     BIN = tidemark_sim
 else
     PLATFORM_FLAGS = -DPLATFORM_LINUX -L/usr/local/lib -lbcm2835
-    PLATFORM_SRCS = lib/IT8951/IT8951.c lib/IT8951/miniGUI.c lib/IT8951/AsciiLib.c
+    PLATFORM_SRCS = ../lib/IT8951/IT8951.c ../lib/IT8951/miniGUI.c ../lib/IT8951/AsciiLib.c
     BIN = tidemark
 endif
 
@@ -37,6 +34,6 @@ $(BIN): $(OBJS)
 
 # Clean build artifacts
 clean:
-	rm -f tidemark tidemark_sim $(wildcard src/*.o) $(wildcard lib/IT8951/*.o)
+	rm -f tidemark tidemark_sim $(wildcard ../src/*.o) $(wildcard ../lib/IT8951/*.o)  # Adjusted paths
 
 .PHONY: all clean

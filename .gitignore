@@ -397,9 +397,6 @@ FodyWeavers.xsd
 # JetBrains Rider
 *.sln.iml
 
-# Local development with Raspberry Pi & MacOS
-dev.sh
-
 # Object files
 *.o
 
