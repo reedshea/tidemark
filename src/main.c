@@ -6,7 +6,7 @@
 #include "SDL.h"
 #include "SDL_ttf.h"
 #endif
-#include "display_layer.h"
+#include "display/display_layer.h"
 #include "graph.h"
 #include "tide_data.h"
 

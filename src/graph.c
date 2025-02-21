@@ -3,7 +3,7 @@
 #include <string.h>
 #include <math.h>
 #include "graph.h"
-#include "display_layer.h"
+#include "display/display_layer.h"
 
 // Helper function to draw a pixel
 static void draw_pixel(uint8_t* framebuf, uint16_t width, uint16_t x, uint16_t y, uint8_t color) {

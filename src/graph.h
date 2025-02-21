@@ -2,7 +2,7 @@
 #define GRAPH_H
 
 #include <stdint.h>
-#include "display_layer.h"
+#include "display/display_layer.h"
 #include "tide_data.h"
 
 // Graph dimensions and margins

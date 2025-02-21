@@ -1,6 +1,6 @@
 #include "SDL.h"
 #include "SDL_ttf.h"
-#include "display_layer.h"
+#include "display/display_layer.h"
 #include <string.h>
 #include <stdlib.h>
 

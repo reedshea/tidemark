@@ -5,7 +5,7 @@ CC = gcc
 COMMON_FLAGS = -Wall -Wextra -I./src -I./lib/IT8951
 
 # Source files
-COMMON_SRCS = src/graph.c src/display_layer.c src/main.c
+COMMON_SRCS = src/graph.c src/display/display_layer.c src/main.c
 
 # Platform-specific settings
 ifeq ($(PLATFORM),macos)
