@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 #include "display/display_layer.h"
-#include "tide_data.h"
+#include "data/tide_data.h"
 
 // Graph dimensions and margins
 #define GRAPH_MARGIN_LEFT   100  // Space for y-axis labels

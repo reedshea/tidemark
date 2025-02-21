@@ -7,7 +7,7 @@ COMMON_SRCS = ../src/graph.c ../src/display/display_layer.c ../src/main.c  # Adj
 # Platform-specific settings
 ifeq ($(PLATFORM),macos)
     PLATFORM_FLAGS = -I/opt/homebrew/include/SDL2 -L/opt/homebrew/lib -lSDL2 -lSDL2_ttf -DPLATFORM_MACOS
-    PLATFORM_SRCS = ../src/display_sdl.c  # Adjusted path
+    PLATFORM_SRCS = ../sim/display_sdl.c  # Adjusted path
     BIN = tidemark_sim
 else
     PLATFORM_FLAGS = -DPLATFORM_LINUX -L/usr/local/lib -lbcm2835

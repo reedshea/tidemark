@@ -8,7 +8,7 @@
 #endif
 #include "display/display_layer.h"
 #include "graph.h"
-#include "tide_data.h"
+#include "data/tide_data.h"
 
 // Sample tide data (replace with actual data)
 // static const float tide_data[] = {
