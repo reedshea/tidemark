@@ -403,3 +403,5 @@ dev.sh
 # Object files
 *.o
 
+# Simulation output
+tidemark_sim
