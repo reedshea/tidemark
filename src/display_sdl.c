@@ -52,63 +52,64 @@ static bool sdl_init(DisplayConfig* config) {
                             window_width, window_height,
                             SDL_WINDOW_SHOWN);
     if (!window) {
-        printf("Window creation failed: %s\n", SDL_GetError());
-        goto cleanup;
+        printf("Window could not be created! SDL_Error: %s\n", SDL_GetError());
+        TTF_Quit();
+        SDL_Quit();
+        return false;
     }
 
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     if (!renderer) {
-        printf("Renderer creation failed: %s\n", SDL_GetError());
-        goto cleanup;
+        printf("Renderer could not be created! SDL_Error: %s\n", SDL_GetError());
+        SDL_DestroyWindow(window);
+        TTF_Quit();
+        SDL_Quit();
+        return false;
     }
-
-    // Set logical size to match e-ink display dimensions
-    SDL_RenderSetLogicalSize(renderer, DISPLAY_WIDTH, DISPLAY_HEIGHT);
 
     texture = SDL_CreateTexture(renderer,
                               SDL_PIXELFORMAT_RGBA8888,
                               SDL_TEXTUREACCESS_STREAMING,
                               DISPLAY_WIDTH, DISPLAY_HEIGHT);
     if (!texture) {
-        printf("Texture creation failed: %s\n", SDL_GetError());
-        goto cleanup;
+        printf("Texture could not be created! SDL_Error: %s\n", SDL_GetError());
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        TTF_Quit();
+        SDL_Quit();
+        return false;
     }
 
-    // Load a monospace font that resembles e-ink display font
-    font = TTF_OpenFont("/System/Library/Fonts/Menlo.ttc", 16);
+    // Load font at moderate size (not too big, not too small)
+    font = TTF_OpenFont("/System/Library/Fonts/Supplemental/Arial.ttf", 20);
     if (!font) {
-        printf("Font loading failed: %s\n", TTF_GetError());
-        goto cleanup;
+        printf("Failed to load font: %s\n", TTF_GetError());
+        SDL_DestroyTexture(texture);
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        TTF_Quit();
+        SDL_Quit();
+        return false;
     }
 
-    framebuffer = (uint8_t*)malloc(DISPLAY_WIDTH * DISPLAY_HEIGHT);
-    if (!framebuffer) {
-        printf("Framebuffer allocation failed\n");
-        goto cleanup;
+    // Allocate framebuffer
+    framebuffer = (uint8_t*)calloc(DISPLAY_WIDTH * DISPLAY_HEIGHT, sizeof(uint8_t));
+    texture_buffer = (uint32_t*)calloc(DISPLAY_WIDTH * DISPLAY_HEIGHT, sizeof(uint32_t));
+    if (!framebuffer || !texture_buffer) {
+        printf("Failed to allocate buffers\n");
+        if (framebuffer) free(framebuffer);
+        if (texture_buffer) free(texture_buffer);
+        TTF_CloseFont(font);
+        SDL_DestroyTexture(texture);
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        TTF_Quit();
+        SDL_Quit();
+        return false;
     }
 
-    texture_buffer = (uint32_t*)malloc(DISPLAY_WIDTH * DISPLAY_HEIGHT * sizeof(uint32_t));
-    if (!texture_buffer) {
-        printf("Texture buffer allocation failed\n");
-        goto cleanup;
-    }
-
-    // Initialize framebuffer to white
-    memset(framebuffer, 0xFF, DISPLAY_WIDTH * DISPLAY_HEIGHT);
     config->framebuffer = framebuffer;
-    
     return true;
-
-cleanup:
-    if (texture_buffer) free(texture_buffer);
-    if (framebuffer) free(framebuffer);
-    if (font) TTF_CloseFont(font);
-    if (texture) SDL_DestroyTexture(texture);
-    if (renderer) SDL_DestroyRenderer(renderer);
-    if (window) SDL_DestroyWindow(window);
-    TTF_Quit();
-    SDL_Quit();
-    return false;
 }
 
 static void sdl_cleanup(void) {

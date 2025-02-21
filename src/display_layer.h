@@ -17,6 +17,15 @@
 #define DISPLAY_WIDTH 1872
 #define DISPLAY_HEIGHT 1404
 
+// Display colors (both displays: 0x00 = black, 0xFF = white)
+#ifdef PLATFORM_MACOS
+#define DISPLAY_BLACK 0x00  // Black in SDL
+#define DISPLAY_WHITE 0xFF  // White in SDL
+#else
+#define DISPLAY_BLACK 0x00  // Black on e-ink
+#define DISPLAY_WHITE 0xFF  // White on e-ink
+#endif
+
 // Display configuration
 typedef struct {
     uint16_t width;

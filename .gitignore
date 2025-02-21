@@ -403,7 +403,3 @@ dev.sh
 # Object files
 *.o
 
-# Executables
-*
-!*.*
-!*/
