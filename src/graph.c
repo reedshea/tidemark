@@ -73,13 +73,46 @@ static void draw_thick_line(uint8_t* framebuf, uint16_t width,
     }
 }
 
-void draw_graph_axes(uint8_t* framebuf, uint16_t width, uint16_t height) {
-    // Clear only the graph area to white
-    for (int y = GRAPH_MARGIN_TOP; y < height - GRAPH_MARGIN_BOTTOM; y++) {
-        for (int x = GRAPH_MARGIN_LEFT; x < width - GRAPH_MARGIN_RIGHT; x++) {
-            framebuf[y * width + x] = DISPLAY_WHITE;
-        }
+// Helper function to calculate a point on a cubic Bezier curve
+static void bezier_point(float t, 
+                        int x0, int y0,   // Start point
+                        int x1, int y1,   // Control point 1
+                        int x2, int y2,   // Control point 2
+                        int x3, int y3,   // End point
+                        int* x, int* y) {
+    float t2 = t * t;
+    float t3 = t2 * t;
+    float mt = 1 - t;
+    float mt2 = mt * mt;
+    float mt3 = mt2 * mt;
+    
+    *x = x0 * mt3 + 3 * x1 * mt2 * t + 3 * x2 * mt * t2 + x3 * t3;
+    *y = y0 * mt3 + 3 * y1 * mt2 * t + 3 * y2 * mt * t2 + y3 * t3;
+}
+
+// Draw a cubic Bezier curve
+static void draw_bezier_curve(uint8_t* framebuf, uint16_t width,
+                            int x0, int y0,   // Start point
+                            int x1, int y1,   // Control point 1
+                            int x2, int y2,   // Control point 2
+                            int x3, int y3,   // End point
+                            uint8_t color, uint8_t thickness) {
+    int prev_x = x0;
+    int prev_y = y0;
+    
+    // Draw curve with small steps
+    for (float t = 0.01f; t <= 1.0f; t += 0.01f) {
+        int x, y;
+        bezier_point(t, x0, y0, x1, y1, x2, y2, x3, y3, &x, &y);
+        draw_thick_line(framebuf, width, prev_x, prev_y, x, y, color, thickness);
+        prev_x = x;
+        prev_y = y;
     }
+}
+
+void draw_graph_axes(uint8_t* framebuf, uint16_t width, uint16_t height) {
+    // Clear the entire background to white
+    memset(framebuf, DISPLAY_WHITE, width * height);
     
     // Draw X axis (thicker)
     draw_thick_line(framebuf, width,
@@ -201,29 +234,36 @@ void plot_tide_data(uint8_t* framebuf, uint16_t width, uint16_t height,
     // Find the start day to use as reference
     int start_day = data[0].day;
     
-    // Draw simple lines connecting the points
+    // Draw smooth curves connecting the points
     for (size_t i = 0; i < num_points - 1; i++) {
-        // Calculate hours since start of first day
+        // Calculate points
         float time1 = (data[i].day - start_day) * 24.0f + data[i].hour + (data[i].minute / 60.0f);
         float time2 = (data[i+1].day - start_day) * 24.0f + data[i+1].hour + (data[i+1].minute / 60.0f);
         
-        int x1 = GRAPH_MARGIN_LEFT + (time1 * graph_width / 48);  // Show 48 hours
-        int x2 = GRAPH_MARGIN_LEFT + (time2 * graph_width / 48);
+        int x0 = GRAPH_MARGIN_LEFT + (time1 * graph_width / 48);
+        int x3 = GRAPH_MARGIN_LEFT + (time2 * graph_width / 48);
         
-        // Calculate y positions using fixed range
-        int y1 = height - GRAPH_MARGIN_BOTTOM - (int)((data[i].height / max_height) * graph_height);
-        int y2 = height - GRAPH_MARGIN_BOTTOM - (int)((data[i+1].height / max_height) * graph_height);
+        int y0 = height - GRAPH_MARGIN_BOTTOM - (int)((data[i].height / max_height) * graph_height);
+        int y3 = height - GRAPH_MARGIN_BOTTOM - (int)((data[i+1].height / max_height) * graph_height);
         
-        printf("Point %zu: height=%.1f, y=%d\n", i, data[i].height, y1);
+        // Calculate control points 1/3 and 2/3 of the way between points
+        int x1 = x0 + (x3 - x0) / 3;
+        int x2 = x0 + 2 * (x3 - x0) / 3;
         
-        // Draw thicker line for better visibility
-        draw_thick_line(framebuf, width, x1, y1, x2, y2, DISPLAY_BLACK, 3);
+        // For y control points, use the current point's height to create smooth curves
+        int y1 = y0;  // Keep first control point at same height as start
+        int y2 = y3;  // Keep second control point at same height as end
+        
+        // Draw the curve
+        draw_bezier_curve(framebuf, width,
+                         x0, y0, x1, y1, x2, y2, x3, y3,
+                         DISPLAY_BLACK, 3);
     }
     
     // Draw data points and labels
     for (size_t i = 0; i < num_points; i++) {
         float time = (data[i].day - start_day) * 24.0f + data[i].hour + (data[i].minute / 60.0f);
-        int x = GRAPH_MARGIN_LEFT + (time * graph_width / 48);  // Show 48 hours
+        int x = GRAPH_MARGIN_LEFT + (time * graph_width / 48);
         
         int y = height - GRAPH_MARGIN_BOTTOM - (int)((data[i].height / max_height) * graph_height);
         
