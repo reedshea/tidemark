@@ -399,3 +399,11 @@ FodyWeavers.xsd
 
 # Local development with Raspberry Pi & MacOS
 dev.sh
+
+# Object files
+*.o
+
+# Executables
+*
+!*.*
+!*/
