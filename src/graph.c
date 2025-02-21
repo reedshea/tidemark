@@ -110,6 +110,31 @@ static void draw_bezier_curve(uint8_t* framebuf, uint16_t width,
     }
 }
 
+// Draw a uniform crosshatch pattern
+static void draw_base_pattern(uint8_t* pattern_buf, uint16_t width, uint16_t height,
+                            int start_x, int end_x, int start_y, int end_y) {
+    const int spacing = 15;  // Space between lines
+    
+    // Clear pattern buffer to white
+    memset(pattern_buf, DISPLAY_WHITE, width * height);
+    
+    // Draw diagonal lines (/)
+    for (int x = start_x - height; x < end_x + height; x += spacing) {
+        draw_thick_line(pattern_buf, width, 
+                       x, end_y,
+                       x + (end_y - start_y), start_y,
+                       DISPLAY_BLACK, 1);
+    }
+    
+    // Draw diagonal lines (\)
+    for (int x = start_x - height; x < end_x + height; x += spacing) {
+        draw_thick_line(pattern_buf, width,
+                       x, start_y,
+                       x + (end_y - start_y), end_y,
+                       DISPLAY_BLACK, 1);
+    }
+}
+
 void draw_graph_axes(uint8_t* framebuf, uint16_t width, uint16_t height) {
     // Clear the entire background to white
     memset(framebuf, DISPLAY_WHITE, width * height);
@@ -211,8 +236,29 @@ void plot_tide_data(uint8_t* framebuf, uint16_t width, uint16_t height,
                    const TidePoint* data, size_t num_points) {
     printf("Plotting tide data...\n");
     
+    // Adjust graph height to use only bottom 60% of display
+    int max_graph_height = (height - GRAPH_MARGIN_TOP - GRAPH_MARGIN_BOTTOM) * 0.6;
     int graph_width = width - GRAPH_MARGIN_LEFT - GRAPH_MARGIN_RIGHT;
-    int graph_height = height - GRAPH_MARGIN_TOP - GRAPH_MARGIN_BOTTOM;
+    int graph_height = max_graph_height;
+    
+    // Create temporary buffers
+    uint8_t* pattern_buf = malloc(width * height);
+    uint8_t* mask_buf = malloc(width * height);
+    if (!pattern_buf || !mask_buf) {
+        printf("Failed to allocate temporary buffers\n");
+        free(pattern_buf);
+        free(mask_buf);
+        return;
+    }
+    
+    // Clear mask buffer to white (fully transparent)
+    memset(mask_buf, DISPLAY_WHITE, width * height);
+    
+    // Draw the base crosshatch pattern
+    draw_base_pattern(pattern_buf, width, height,
+                     GRAPH_MARGIN_LEFT, width - GRAPH_MARGIN_RIGHT,
+                     height - GRAPH_MARGIN_BOTTOM - graph_height,
+                     height - GRAPH_MARGIN_BOTTOM);
     
     // First find actual data range
     float data_min = data[0].height;
@@ -221,22 +267,16 @@ void plot_tide_data(uint8_t* framebuf, uint16_t width, uint16_t height,
         if (data[i].height < data_min) data_min = data[i].height;
         if (data[i].height > data_max) data_max = data[i].height;
     }
-    printf("Data range: %.1f to %.1f\n", data_min, data_max);
     
     // Use fixed range that comfortably contains the data
     float min_height = 0.0f;
     float max_height = 4.0f;
-    float height_range = max_height - min_height;
-    
-    printf("Graph range: %.1f to %.1f (range=%.1f)\n", min_height, max_height, height_range);
-    printf("Graph height: %d pixels\n", graph_height);
     
     // Find the start day to use as reference
     int start_day = data[0].day;
     
-    // Draw smooth curves connecting the points
+    // Create the mask by filling below the curve
     for (size_t i = 0; i < num_points - 1; i++) {
-        // Calculate points
         float time1 = (data[i].day - start_day) * 24.0f + data[i].hour + (data[i].minute / 60.0f);
         float time2 = (data[i+1].day - start_day) * 24.0f + data[i+1].hour + (data[i+1].minute / 60.0f);
         
@@ -249,10 +289,51 @@ void plot_tide_data(uint8_t* framebuf, uint16_t width, uint16_t height,
         // Calculate control points 1/3 and 2/3 of the way between points
         int x1 = x0 + (x3 - x0) / 3;
         int x2 = x0 + 2 * (x3 - x0) / 3;
+        int y1 = y0;
+        int y2 = y3;
         
-        // For y control points, use the current point's height to create smooth curves
-        int y1 = y0;  // Keep first control point at same height as start
-        int y2 = y3;  // Keep second control point at same height as end
+        // Draw filled bezier curve in the mask buffer
+        for (int x = x0; x <= x3; x++) {
+            float t = (float)(x - x0) / (x3 - x0);
+            float mt = 1 - t;
+            float mt2 = mt * mt;
+            float mt3 = mt2 * mt;
+            float t2 = t * t;
+            float t3 = t2 * t;
+            
+            int y = y0 * mt3 + 3 * y1 * mt2 * t + 3 * y2 * mt * t2 + y3 * t3;
+            
+            // Fill everything below the curve with black in the mask
+            for (int fill_y = y; fill_y <= height - GRAPH_MARGIN_BOTTOM; fill_y++) {
+                mask_buf[fill_y * width + x] = DISPLAY_BLACK;
+            }
+        }
+    }
+    
+    // Combine pattern and mask into final framebuffer
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            int idx = y * width + x;
+            // Only show pattern where mask is black
+            framebuf[idx] = (mask_buf[idx] == DISPLAY_BLACK) ? pattern_buf[idx] : DISPLAY_WHITE;
+        }
+    }
+    
+    // Draw the smooth curve on top
+    for (size_t i = 0; i < num_points - 1; i++) {
+        float time1 = (data[i].day - start_day) * 24.0f + data[i].hour + (data[i].minute / 60.0f);
+        float time2 = (data[i+1].day - start_day) * 24.0f + data[i+1].hour + (data[i+1].minute / 60.0f);
+        
+        int x0 = GRAPH_MARGIN_LEFT + (time1 * graph_width / 48);
+        int x3 = GRAPH_MARGIN_LEFT + (time2 * graph_width / 48);
+        
+        int y0 = height - GRAPH_MARGIN_BOTTOM - (int)((data[i].height / max_height) * graph_height);
+        int y3 = height - GRAPH_MARGIN_BOTTOM - (int)((data[i+1].height / max_height) * graph_height);
+        
+        int x1 = x0 + (x3 - x0) / 3;
+        int x2 = x0 + 2 * (x3 - x0) / 3;
+        int y1 = y0;
+        int y2 = y3;
         
         // Draw the curve
         draw_bezier_curve(framebuf, width,
@@ -264,7 +345,6 @@ void plot_tide_data(uint8_t* framebuf, uint16_t width, uint16_t height,
     for (size_t i = 0; i < num_points; i++) {
         float time = (data[i].day - start_day) * 24.0f + data[i].hour + (data[i].minute / 60.0f);
         int x = GRAPH_MARGIN_LEFT + (time * graph_width / 48);
-        
         int y = height - GRAPH_MARGIN_BOTTOM - (int)((data[i].height / max_height) * graph_height);
         
         // Draw data point
@@ -287,7 +367,7 @@ void plot_tide_data(uint8_t* framebuf, uint16_t width, uint16_t height,
                 int bg_x = x - label_width/2 + dx;
                 int bg_y = label_y + dy;
                 if (bg_x >= 0 && bg_x < width && bg_y >= 0 && bg_y < height) {
-                    draw_pixel(framebuf, width, bg_x, bg_y, DISPLAY_WHITE);
+                    framebuf[bg_y * width + bg_x] = DISPLAY_WHITE;
                 }
             }
         }
@@ -295,4 +375,8 @@ void plot_tide_data(uint8_t* framebuf, uint16_t width, uint16_t height,
         // Draw text on white background
         display_draw_text(x - 30, label_y, label, DISPLAY_BLACK, DISPLAY_WHITE);
     }
+    
+    // Clean up
+    free(pattern_buf);
+    free(mask_buf);
 }
