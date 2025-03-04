@@ -72,9 +72,31 @@ def draw_graph_axes(draw, width, height, tide_min, tide_max):
 
 def generate_sinusoid_curve(high_low_points, graph_left, graph_right, graph_bottom, graph_height, tide_min, tide_max):
     """
-    Generate a smooth sinusoidal curve that passes through high and low tide points.
-    This uses harmonic interpolation to create a natural tide curve.
+    Generate a smooth sine-like curve that passes exactly through high and low tide points.
+    Uses cubic spline interpolation to create a natural tide curve.
     """
+    # Sort points by time
+    sorted_points = sorted(high_low_points, key=lambda p: p[0])
+    
+    # Make sure points wrap around for 24-hour cycle
+    # If first point is not at time=0, add a wrapping point from the end
+    if sorted_points[0][0] > 0:
+        # Find the last point before 24:00
+        last_point = max([p for p in sorted_points if p[0] < 24], key=lambda p: p[0])
+        # Calculate time difference to wrap around
+        time_diff = 24 - last_point[0]
+        # Add a copy of the first point, but with time shifted to before 0
+        sorted_points.insert(0, (sorted_points[0][0] - time_diff, sorted_points[0][1]))
+        
+    # Similarly, if the last point is not at time=24, add wrapping from the beginning
+    if sorted_points[-1][0] < 24:
+        # Find the first point after 0:00
+        first_point = min([p for p in sorted_points if p[0] > 0], key=lambda p: p[0])
+        # Calculate time difference to wrap around
+        time_diff = first_point[0]
+        # Add a copy of the last point, but with time shifted to after 24
+        sorted_points.append((sorted_points[-1][0] + time_diff, sorted_points[-1][1]))
+    
     # Generate enough points for a smooth curve
     num_points = 240  # 10 points per hour
     curve_points = []
@@ -82,36 +104,77 @@ def generate_sinusoid_curve(high_low_points, graph_left, graph_right, graph_bott
     # Get the x range of the graph
     x_range = graph_right - graph_left
     
+    # Prepare x and y arrays for interpolation
+    times = [p[0] for p in sorted_points]
+    heights = [p[1] for p in sorted_points]
+    
     # Create the smooth curve
     for i in range(num_points + 1):
-        # Calculate x coordinate evenly spaced across the graph
-        x = graph_left + (i / num_points) * x_range
-        
-        # Convert x to time (0-24 hours)
+        # Calculate current time value (0-24 hours)
         time_of_day = (i / num_points) * 24
         
-        # Initialize amplitude
-        y = 0
-        
-        # For each high/low tide point, add its influence based on a sinusoidal function
-        for point in high_low_points:
-            time_val, height = point
+        # Find the surrounding data points
+        if time_of_day <= times[0]:
+            # If before the first point, use linear interpolation
+            idx_next = 0
+            while idx_next < len(times) and time_of_day > times[idx_next]:
+                idx_next += 1
+            idx_prev = idx_next - 1
             
-            # Calculate the time difference (considering the 24-hour cycle)
-            time_diff = min(abs(time_of_day - time_val), 24 - abs(time_of_day - time_val))
+            # Linear interpolation for height
+            if idx_prev >= 0:
+                t_ratio = (time_of_day - times[idx_prev]) / (times[idx_next] - times[idx_prev])
+                height = heights[idx_prev] + t_ratio * (heights[idx_next] - heights[idx_prev])
+            else:
+                height = heights[idx_next]
+        elif time_of_day >= times[-1]:
+            # If after the last point, use linear interpolation
+            idx_prev = len(times) - 1
+            while idx_prev >= 0 and time_of_day < times[idx_prev]:
+                idx_prev -= 1
+            idx_next = idx_prev + 1
             
-            # Maximum influence at the exact time, decreasing as time_diff increases
-            # This creates a smooth sinusoidal influence of each high/low tide point
-            influence = np.cos(min(time_diff, 12) * np.pi / 12)
+            # Linear interpolation for height
+            if idx_next < len(times):
+                t_ratio = (time_of_day - times[idx_prev]) / (times[idx_next] - times[idx_prev])
+                height = heights[idx_prev] + t_ratio * (heights[idx_next] - heights[idx_prev])
+            else:
+                height = heights[idx_prev]
+        else:
+            # Find surrounding points for interpolation
+            idx_next = 0
+            while idx_next < len(times) and time_of_day > times[idx_next]:
+                idx_next += 1
+            idx_prev = idx_next - 1
             
-            # Add this point's influence (weighted by how close we are to it)
-            y += height * max(0, influence)
+            # Get 4 points for cubic interpolation (2 before, 2 after if possible)
+            idx_p0 = max(0, idx_prev - 1)
+            idx_p1 = idx_prev
+            idx_p2 = idx_next
+            idx_p3 = min(len(times) - 1, idx_next + 1)
+            
+            # Normalize time for interpolation (0-1 between the surrounding points)
+            t = (time_of_day - times[idx_prev]) / (times[idx_next] - times[idx_prev])
+            
+            # Cubic interpolation (cardinal spline)
+            t2 = t * t
+            t3 = t2 * t
+            
+            # Catmull-Rom spline
+            height = (
+                0.5 * (
+                    (2 * heights[idx_p1]) +
+                    (-heights[idx_p0] + heights[idx_p2]) * t +
+                    (2 * heights[idx_p0] - 5 * heights[idx_p1] + 4 * heights[idx_p2] - heights[idx_p3]) * t2 +
+                    (-heights[idx_p0] + 3 * heights[idx_p1] - 3 * heights[idx_p2] + heights[idx_p3]) * t3
+                )
+            )
         
-        # Normalize by total possible influence to get proper tide height
-        y = y / max(1, len(high_low_points) / 2)
+        # Calculate x coordinate
+        x = graph_left + (time_of_day / 24) * x_range
         
-        # Convert to pixel coordinates
-        y_pixel = graph_bottom - ((y - tide_min) / (tide_max - tide_min)) * graph_height
+        # Convert height to pixel coordinates
+        y_pixel = graph_bottom - ((height - tide_min) / (tide_max - tide_min)) * graph_height
         
         # Add the point to our curve
         curve_points.append((int(x), int(y_pixel)))
@@ -161,19 +224,10 @@ def plot_tide_data(draw, width, height, tide_data, graph_params):
                                         graph_bottom, graph_height,
                                         tide_min, tide_max)
     
-    # Draw the tide curve with thicker line for visibility
+    # Draw the tide curve with a simple smooth line, no fill or texture
     if curve_points:
-        # Draw the curve with a thicker line
-        draw.line(curve_points, fill=0, width=4)
-    
-        # Fill area under the curve with solid black
-        fill_points = curve_points + [(graph_right, graph_bottom), (graph_left, graph_bottom)]
-        draw.polygon(fill_points, fill=0, outline=0)
-        
-        # Create a cross-hatch pattern by drawing horizontal lines (every 15 pixels)
-        min_y = min(p[1] for p in curve_points)
-        for y in range(int(graph_bottom), int(min_y) - 15, -15):
-            draw.line([(graph_left, y), (graph_right, y)], fill=255, width=1)
+        # Draw the curve with a clean line
+        draw.line(curve_points, fill=0, width=3)
     
     # Mark high and low tide points
     font = load_font(20)
