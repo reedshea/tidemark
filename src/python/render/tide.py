@@ -70,44 +70,110 @@ def draw_graph_axes(draw, width, height, tide_min, tide_max):
     
     return graph_top, graph_bottom, graph_left, graph_right, graph_height, tide_min_rounded, tide_max_rounded
 
+def generate_sinusoid_curve(high_low_points, graph_left, graph_right, graph_bottom, graph_height, tide_min, tide_max):
+    """
+    Generate a smooth sinusoidal curve that passes through high and low tide points.
+    This uses harmonic interpolation to create a natural tide curve.
+    """
+    # Generate enough points for a smooth curve
+    num_points = 240  # 10 points per hour
+    curve_points = []
+    
+    # Get the x range of the graph
+    x_range = graph_right - graph_left
+    
+    # Create the smooth curve
+    for i in range(num_points + 1):
+        # Calculate x coordinate evenly spaced across the graph
+        x = graph_left + (i / num_points) * x_range
+        
+        # Convert x to time (0-24 hours)
+        time_of_day = (i / num_points) * 24
+        
+        # Initialize amplitude
+        y = 0
+        
+        # For each high/low tide point, add its influence based on a sinusoidal function
+        for point in high_low_points:
+            time_val, height = point
+            
+            # Calculate the time difference (considering the 24-hour cycle)
+            time_diff = min(abs(time_of_day - time_val), 24 - abs(time_of_day - time_val))
+            
+            # Maximum influence at the exact time, decreasing as time_diff increases
+            # This creates a smooth sinusoidal influence of each high/low tide point
+            influence = np.cos(min(time_diff, 12) * np.pi / 12)
+            
+            # Add this point's influence (weighted by how close we are to it)
+            y += height * max(0, influence)
+        
+        # Normalize by total possible influence to get proper tide height
+        y = y / max(1, len(high_low_points) / 2)
+        
+        # Convert to pixel coordinates
+        y_pixel = graph_bottom - ((y - tide_min) / (tide_max - tide_min)) * graph_height
+        
+        # Add the point to our curve
+        curve_points.append((int(x), int(y_pixel)))
+    
+    return curve_points
+
 def plot_tide_data(draw, width, height, tide_data, graph_params):
-    """Plot the tide data as a curve with high/low points marked"""
+    """Plot the tide data as a smooth bezier curve with high/low points marked"""
     graph_top, graph_bottom, graph_left, graph_right, graph_height, tide_min, tide_max = graph_params
     graph_width = graph_right - graph_left
     
-    # Extract times and heights
-    times = np.array([point['hour'] + point['minute']/60 for point in tide_data])
-    heights = np.array([point['height'] for point in tide_data])
+    # First, filter and organize tide data points
+    high_tide_points = []
+    low_tide_points = []
     
-    # Create more points for a smoother curve
-    x_smooth = np.linspace(0, 24, 240)  # 240 points (10 per hour)
+    # If we have actual tide data, use it to separate high/low points
+    if tide_data:
+        for point in tide_data:
+            time_val = point['hour'] + point['minute']/60
+            if 0 <= time_val <= 24:  # Only include points in the 24-hour range
+                if point.get('type') == 'H':
+                    high_tide_points.append((time_val, point['height']))
+                elif point.get('type') == 'L':
+                    low_tide_points.append((time_val, point['height']))
     
-    # Normalize tide times to 0-24 range for proper interpolation
-    times_normalized = times % 24
+    # If we don't have enough high or low tide points, generate synthetic ones
+    if len(high_tide_points) < 2:
+        high_tide_points = [(0, 3.0), (12, 3.0), (24, 3.0)]
     
-    # Sort the data by time for proper interpolation
-    sorted_indices = np.argsort(times_normalized)
-    times_sorted = times_normalized[sorted_indices]
-    heights_sorted = heights[sorted_indices]
+    if len(low_tide_points) < 2:
+        low_tide_points = [(6, 0.5), (18, 0.5)]
     
-    # Use cubic spline interpolation for a smooth curve
-    y_smooth = np.interp(x_smooth, times_sorted, heights_sorted)
+    # Combine and sort all points by time
+    all_points = high_tide_points + low_tide_points
+    all_points.sort(key=lambda p: p[0])
     
     # Convert to pixel coordinates
-    x_pixels = graph_left + (x_smooth / 24) * graph_width
-    y_pixels = graph_bottom - ((y_smooth - tide_min) / (tide_max - tide_min)) * graph_height
+    pixel_points = []
+    for t, h in all_points:
+        x = graph_left + (t / 24) * graph_width
+        y = graph_bottom - ((h - tide_min) / (tide_max - tide_min)) * graph_height
+        pixel_points.append((x, y))
     
-    # Draw the tide curve
-    points = list(zip(x_pixels, y_pixels))
-    draw.line(points, fill=0, width=3)
+    # Generate smooth sinusoidal curve
+    curve_points = generate_sinusoid_curve(all_points, 
+                                        graph_left, graph_right, 
+                                        graph_bottom, graph_height,
+                                        tide_min, tide_max)
     
-    # Fill area under the curve
-    fill_points = points + [(graph_right, graph_bottom), (graph_left, graph_bottom)]
-    draw.polygon(fill_points, fill=0, outline=0)
+    # Draw the tide curve with thicker line for visibility
+    if curve_points:
+        # Draw the curve with a thicker line
+        draw.line(curve_points, fill=0, width=4)
     
-    # Create a cross-hatch pattern by drawing horizontal lines (every 20 pixels)
-    for y in range(int(graph_bottom), int(min(y_pixels)) - 20, -20):
-        draw.line([(graph_left, y), (graph_right, y)], fill=255, width=1)
+        # Fill area under the curve with solid black
+        fill_points = curve_points + [(graph_right, graph_bottom), (graph_left, graph_bottom)]
+        draw.polygon(fill_points, fill=0, outline=0)
+        
+        # Create a cross-hatch pattern by drawing horizontal lines (every 15 pixels)
+        min_y = min(p[1] for p in curve_points)
+        for y in range(int(graph_bottom), int(min_y) - 15, -15):
+            draw.line([(graph_left, y), (graph_right, y)], fill=255, width=1)
     
     # Mark high and low tide points
     font = load_font(20)

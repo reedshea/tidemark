@@ -13,6 +13,7 @@ SAMPLE_TIDE_DATA = [
     {'hour': 6, 'minute': 45, 'height': 3.2, 'type': 'H'},
     {'hour': 12, 'minute': 50, 'height': 0.6, 'type': 'L'},
     {'hour': 19, 'minute': 10, 'height': 3.0, 'type': 'H'},
+    {'hour': 24, 'minute': 30, 'height': 0.5, 'type': 'L'},  # Same as first point, for smooth cycle
 ]
 
 def get_tide_data(location=None, date=None):
