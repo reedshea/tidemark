@@ -1,6 +1,6 @@
 #include "SDL.h"
 #include "SDL_ttf.h"
-#include "display/display_layer.h"
+#include "c/display/display_layer.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -30,10 +30,12 @@ static void update_texture_buffer(void) {
 }
 
 static bool sdl_init(DisplayConfig* config) {
+    printf("Initializing SDL display simulator...\n");
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         printf("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
         return false;
     }
+    printf("SDL initialized successfully\n");
 
     if (TTF_Init() < 0) {
         printf("TTF initialization failed: %s\n", TTF_GetError());

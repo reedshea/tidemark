@@ -139,17 +139,17 @@ bool display_tide_chart(int force_night) {
     if (force_night == 1) {
         // Force night mode
         snprintf(command, sizeof(command), 
-                "%s %s/src/sky_display.py --night --output %s", 
+                "%s %s/src/python/main.py --night --output %s", 
                 python_path, project_dir, bitmap_path);
     } else if (force_night == 0) {
         // Force day mode
         snprintf(command, sizeof(command), 
-                "%s %s/src/sky_display.py --day --output %s", 
+                "%s %s/src/python/main.py --day --output %s", 
                 python_path, project_dir, bitmap_path);
     } else {
         // Auto mode based on current time
         snprintf(command, sizeof(command), 
-                "%s %s/src/sky_display.py --output %s", 
+                "%s %s/src/python/main.py --output %s", 
                 python_path, project_dir, bitmap_path);
     }
     
@@ -162,6 +162,10 @@ bool display_tide_chart(int force_night) {
         return false;
     }
     
+    printf("About to display bitmap at %s\n", bitmap_path);
+    
     // Display the generated bitmap
-    return display_bitmap(bitmap_path);
+    bool display_result = display_bitmap(bitmap_path);
+    printf("display_bitmap() returned: %d\n", display_result);
+    return display_result;
 }
