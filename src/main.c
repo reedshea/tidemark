@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <time.h>
 #ifdef PLATFORM_MACOS
 #include "SDL.h"
 #include "SDL_ttf.h"
@@ -9,13 +10,7 @@
 #include "display/display_layer.h"
 #include "graph.h"
 #include "data/tide_data.h"
-
-// Sample tide data (replace with actual data)
-// static const float tide_data[] = {
-//     1.2, 2.5, 3.8, 2.1, 1.0, 2.2, 3.5, 2.8, 1.5, 2.0,
-//     3.0, 2.3, 1.8, 2.7, 3.2, 2.4, 1.7, 2.9, 3.4, 2.6
-// };
-// static const int num_tide_points = sizeof(tide_data) / sizeof(tide_data[0]);
+#include "sky_layer.h"
 
 int main(int argc, char* argv[]) {
     (void)argc;  // Unused
@@ -41,16 +36,36 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Draw the graph components
+    // Clear the framebuffer to white first
+    memset(framebuffer, DISPLAY_WHITE, DISPLAY_WIDTH * DISPLAY_HEIGHT);
+    
+    // Print size information for debugging
+    printf("Display dimensions: %d x %d\n", DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    
+    // Draw the sky layer with tide data
+    printf("Drawing sky layer...\n");
+    // draw_sky_layer(framebuffer, DISPLAY_WIDTH, DISPLAY_HEIGHT, SAMPLE_TIDE_DATA, NUM_TIDE_POINTS);
+    
+    // Now draw the tide graph
     printf("Drawing graph axes...\n");
     draw_graph_axes(framebuffer, DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    
     printf("Drawing height labels...\n");
     draw_height_labels(framebuffer, DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    
     printf("Drawing time labels...\n");
     draw_time_labels(framebuffer, DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    
     printf("Plotting tide data...\n");
     plot_tide_data(framebuffer, DISPLAY_WIDTH, DISPLAY_HEIGHT, 
                   SAMPLE_TIDE_DATA, NUM_TIDE_POINTS);
+    
+    // Add label at bottom for debugging
+    char debug_label[100];
+    // sprintf(debug_label, "TIDEMARK - SKY & TIDE COMBINED");
+    int text_x = DISPLAY_WIDTH/2 - 250;  // Adjust for larger font and better centering
+    int text_y = DISPLAY_HEIGHT - 50;    // Position at the bottom of the screen
+    display_draw_text(text_x, text_y, debug_label, DISPLAY_BLACK, DISPLAY_WHITE);
 
     // Main loop
     bool running = true;

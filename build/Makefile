@@ -2,7 +2,7 @@ CC = gcc
 COMMON_FLAGS = -Wall -Wextra -I../src -I../lib/IT8951  # Adjusted paths from /build/
 
 # Source files
-COMMON_SRCS = ../src/graph.c ../src/display/display_layer.c ../src/main.c  # Adjusted paths
+COMMON_SRCS = ../src/graph.c ../src/display/display_layer.c ../src/sky_display.c ../src/sky_layer.c ../src/main.c  # Adjusted paths
 
 # Platform-specific settings
 ifeq ($(PLATFORM),macos)
@@ -11,7 +11,7 @@ ifeq ($(PLATFORM),macos)
     BIN = tidemark_sim
 else
     PLATFORM_FLAGS = -DPLATFORM_LINUX -L/usr/local/lib -lbcm2835
-    PLATFORM_SRCS = ../lib/IT8951/IT8951.c ../lib/IT8951/miniGUI.c ../lib/IT8951/AsciiLib.c
+    PLATFORM_SRCS = ../src/display/display_eink.c ../lib/IT8951/IT8951.c ../lib/IT8951/miniGUI.c ../lib/IT8951/AsciiLib.c
     BIN = tidemark
 endif
 

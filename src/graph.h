@@ -8,7 +8,7 @@
 // Graph dimensions and margins
 #define GRAPH_MARGIN_LEFT   100  // Space for y-axis labels
 #define GRAPH_MARGIN_RIGHT  50
-#define GRAPH_MARGIN_TOP    50
+#define GRAPH_MARGIN_TOP    50   // Space for top padding
 #define GRAPH_MARGIN_BOTTOM 100  // Space for x-axis labels
 
 // Graph drawing functions

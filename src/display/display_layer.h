@@ -7,15 +7,24 @@
 // Platform detection
 #ifndef PLATFORM_LINUX
 #if defined(__APPLE__) || defined(__MACH__)
+#ifndef PLATFORM_MACOS
 #define PLATFORM_MACOS
+#endif
 #else
 #define PLATFORM_LINUX
 #endif
 #endif
 
-// Display dimensions (matching e-ink display)
+// Display dimensions 
+#ifndef PLATFORM_MACOS
+// E-ink dimensions for 7.8inch display
 #define DISPLAY_WIDTH 1872
 #define DISPLAY_HEIGHT 1404
+#else
+// Simulator dimensions - using same dimensions as actual display
+#define DISPLAY_WIDTH 1872
+#define DISPLAY_HEIGHT 1404
+#endif
 
 // Display colors (both displays: 0x00 = black, 0xFF = white)
 #ifdef PLATFORM_MACOS
