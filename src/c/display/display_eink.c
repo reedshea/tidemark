@@ -24,27 +24,37 @@ static bool display_initialized = false;
 
 static bool eink_init(DisplayConfig* config) {
 #ifndef PLATFORM_MACOS
-    if (IT8951_Init()) {
-        printf("IT8951_Init error\n");
+    printf("Starting IT8951 initialization\n");
+    
+    int result = IT8951_Init();
+    if (result) {
+        printf("IT8951_Init error, error code: %d\n", result);
         return false;
     }
+    
+    printf("IT8951 initialized successfully\n");
     
     // Set dimensions
     config->width = DISPLAY_WIDTH;
     config->height = DISPLAY_HEIGHT;
+    printf("Using display dimensions: %d x %d\n", DISPLAY_WIDTH, DISPLAY_HEIGHT);
     
     // Allocate framebuffer - use 8BPP (grayscale)
+    printf("Allocating framebuffer of size: %d bytes\n", DISPLAY_WIDTH * DISPLAY_HEIGHT);
     framebuffer = (uint8_t*)calloc(DISPLAY_WIDTH * DISPLAY_HEIGHT, sizeof(uint8_t));
     if (!framebuffer) {
-        printf("Failed to allocate framebuffer\n");
+        printf("Failed to allocate framebuffer: %m\n");
         return false;
     }
+    
+    printf("Framebuffer allocated successfully\n");
     
     // Clear to white
     memset(framebuffer, DISPLAY_WHITE, DISPLAY_WIDTH * DISPLAY_HEIGHT);
     
     config->framebuffer = framebuffer;
     display_initialized = true;
+    printf("E-ink display initialized successfully\n");
     return true;
 #else
     // Should never be called on macOS

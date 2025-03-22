@@ -42,6 +42,8 @@ int main(int argc, char* argv[]) {
     use_simulator = true;
 #endif
 
+    printf("Starting display initialization (simulator=%d)...\n", use_simulator);
+    
     if (!display_init(use_simulator)) {
         printf("Failed to initialize display\n");
         return 1;
@@ -49,6 +51,15 @@ int main(int argc, char* argv[]) {
 
     printf("Display initialized successfully\n");
     printf("Display dimensions: %d x %d\n", DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    
+#ifndef PLATFORM_MACOS
+    // For Raspberry Pi, check GPIO access - needed by bcm2835 for IT8951 display
+    printf("Running on Raspberry Pi, checking if we have GPIO access...\n");
+    if (geteuid() != 0) {
+        printf("Warning: Not running as root. GPIO access may be restricted.\n");
+        printf("Try running with sudo for proper hardware access.\n");
+    }
+#endif
 
     // Main loop
     time_t last_update = 0;
