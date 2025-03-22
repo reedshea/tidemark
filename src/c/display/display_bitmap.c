@@ -153,21 +153,45 @@ bool display_tide_chart(int force_night) {
     
     printf("Using project directory: %s\n", project_dir);
     
+    // Create a full path to the Python script - try both direct and parent directory
+    char script_path[512] = {0};
+    
+    // First try the path with the parent directory
+    snprintf(script_path, sizeof(script_path), "%s/../src/python/main.py", project_dir);
+    if (access(script_path, F_OK) == 0) {
+        printf("Found Python script at: %s\n", script_path);
+    } else {
+        // Try directly with the project directory
+        snprintf(script_path, sizeof(script_path), "%s/src/python/main.py", project_dir);
+        if (access(script_path, F_OK) == 0) {
+            printf("Found Python script at: %s\n", script_path);
+        } else {
+            // Try an absolute path
+            snprintf(script_path, sizeof(script_path), "/home/reed/tidemark/src/python/main.py");
+            if (access(script_path, F_OK) == 0) {
+                printf("Found Python script at: %s\n", script_path);
+            } else {
+                printf("ERROR: Could not find Python script at any expected location\n");
+                return false;
+            }
+        }
+    }
+    
     if (force_night == 1) {
         // Force night mode
         snprintf(command, sizeof(command), 
-                "%s %s/src/python/main.py --night --output %s", 
-                python_path, project_dir, bitmap_path);
+                "%s %s --night --output %s", 
+                python_path, script_path, bitmap_path);
     } else if (force_night == 0) {
         // Force day mode
         snprintf(command, sizeof(command), 
-                "%s %s/src/python/main.py --day --output %s", 
-                python_path, project_dir, bitmap_path);
+                "%s %s --day --output %s", 
+                python_path, script_path, bitmap_path);
     } else {
         // Auto mode based on current time
         snprintf(command, sizeof(command), 
-                "%s %s/src/python/main.py --output %s", 
-                python_path, project_dir, bitmap_path);
+                "%s %s --output %s", 
+                python_path, script_path, bitmap_path);
     }
     
     printf("Generating tide chart with command: %s\n", command);
