@@ -13,7 +13,7 @@ import math
 GREAT_HILL_CONSTITUENTS = {
     "station_id": "8447368",
     "name": "Great Hill, Massachusetts",
-    "mean_tide_level": 1.52,            # meters
+    "mean_tide_level": 0.590,            # Meters, relative to Mean Lower Low Water
     "time_zone": "GMT",                 # Time zone for phase data
     "unit": "meters",                   # Unit for amplitude and height
     "constituents": [
