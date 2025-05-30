@@ -200,11 +200,28 @@ def get_tide_data(location=None, date=None):
     # Find the extrema (high and low tides)
     extrema = find_extrema(height_points, time_points)
     
-    # Add the endpoint for smooth curve drawing (copy of the first point but at hour 24)
-    if extrema and extrema[0]['hour'] == 0:
-        first_point = extrema[0].copy()
-        first_point['hour'] = 24
-        extrema.append(first_point)
+    # Add boundary points by calculating tide heights at 0:00 and 24:00
+    # This ensures we have data points at the exact edges
+    height_at_0 = calculate_tide_height(constituent_data, start_datetime)
+    height_at_24 = calculate_tide_height(constituent_data, end_datetime)
+    
+    # Add the 0:00 point if it's not already an extrema
+    if not any(e['hour'] == 0 and e['minute'] == 0 for e in extrema):
+        extrema.insert(0, {
+            'hour': 0,
+            'minute': 0,
+            'height': round(height_at_0, 2),
+            'type': 'B'  # Boundary point
+        })
+    
+    # Add the 24:00 point if it's not already there
+    if not any(e['hour'] == 24 and e['minute'] == 0 for e in extrema):
+        extrema.append({
+            'hour': 24,
+            'minute': 0,
+            'height': round(height_at_24, 2),
+            'type': 'B'  # Boundary point
+        })
     
     # Cache the result
     try:

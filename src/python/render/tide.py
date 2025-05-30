@@ -80,24 +80,8 @@ def generate_sinusoid_curve(high_low_points, graph_left, graph_right, graph_bott
     # Sort points by time
     sorted_points = sorted(high_low_points, key=lambda p: p[0])
     
-    # Make sure points wrap around for 24-hour cycle
-    # If first point is not at time=0, add a wrapping point from the end
-    if sorted_points[0][0] > 0:
-        # Find the last point before 24:00
-        last_point = max([p for p in sorted_points if p[0] < 24], key=lambda p: p[0])
-        # Calculate time difference to wrap around
-        time_diff = 24 - last_point[0]
-        # Add a copy of the first point, but with time shifted to before 0
-        sorted_points.insert(0, (sorted_points[0][0] - time_diff, sorted_points[0][1]))
-        
-    # Similarly, if the last point is not at time=24, add wrapping from the beginning
-    if sorted_points[-1][0] < 24:
-        # Find the first point after 0:00
-        first_point = min([p for p in sorted_points if p[0] > 0], key=lambda p: p[0])
-        # Calculate time difference to wrap around
-        time_diff = first_point[0]
-        # Add a copy of the last point, but with time shifted to after 24
-        sorted_points.append((sorted_points[-1][0] + time_diff, sorted_points[-1][1]))
+    # Ensure we have proper boundary points for smooth curves
+    # The tide API should now provide points at 0:00 and 24:00
     
     # Generate enough points for a smooth curve
     num_points = 240  # 10 points per hour
@@ -110,7 +94,8 @@ def generate_sinusoid_curve(high_low_points, graph_left, graph_right, graph_bott
     times = [p[0] for p in sorted_points]
     heights = [p[1] for p in sorted_points]
     
-    # Create the smooth curve
+    # Only generate curve points for the visible 0-24 hour range
+    # But use the extended data for proper interpolation
     for i in range(num_points + 1):
         # Calculate current time value (0-24 hours)
         time_of_day = (i / num_points) * 24
@@ -261,9 +246,11 @@ def plot_tide_data(draw, width, height, tide_data, graph_params):
     graph_top, graph_bottom, graph_left, graph_right, graph_height, tide_min, tide_max = graph_params
     graph_width = graph_right - graph_left
     
+    
     # First, filter and organize tide data points
     high_tide_points = []
     low_tide_points = []
+    boundary_points = []
     
     # If we have actual tide data, use it to separate high/low points
     if tide_data:
@@ -274,6 +261,8 @@ def plot_tide_data(draw, width, height, tide_data, graph_params):
                     high_tide_points.append((time_val, point['height']))
                 elif point.get('type') == 'L':
                     low_tide_points.append((time_val, point['height']))
+                elif point.get('type') == 'B':
+                    boundary_points.append((time_val, point['height']))
     
     # If we don't have enough high or low tide points, generate synthetic ones
     if len(high_tide_points) < 2:
@@ -283,7 +272,8 @@ def plot_tide_data(draw, width, height, tide_data, graph_params):
         low_tide_points = [(6, 0.5), (18, 0.5)]
     
     # Combine and sort all points by time
-    all_points = high_tide_points + low_tide_points
+    # Include boundary points to ensure smooth curves at edges
+    all_points = high_tide_points + low_tide_points + boundary_points
     all_points.sort(key=lambda p: p[0])
     
     # Convert to pixel coordinates
@@ -395,7 +385,7 @@ def draw_moon_arc(draw, moon_data, graph_params, mean_tide_level):
 
 def draw_moon_phase(draw, x, y, phase):
     """Draw moon with current phase at specified position"""
-    moon_radius = 20
+    moon_radius = 40
     
     # Draw moon outline
     draw.ellipse([
