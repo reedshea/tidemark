@@ -2,6 +2,7 @@
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import os
+import datetime
 
 from render.sky import load_font, SKY_HEIGHT, GRAPH_MARGIN_LEFT, GRAPH_MARGIN_RIGHT, GRAPH_MARGIN_BOTTOM, GRAPH_MARGIN_TOP
 
@@ -181,6 +182,79 @@ def generate_sinusoid_curve(high_low_points, graph_left, graph_right, graph_bott
     
     return curve_points
 
+def apply_wave_background(img, draw, curve_points, graph_bottom, graph_left, graph_right):
+    """Apply wave background image below the tide curve"""
+    # Load wave background image
+    wave_bg_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'wave-background.png')
+    if not os.path.exists(wave_bg_path):
+        return
+    
+    wave_bg = Image.open(wave_bg_path)
+    wave_width, wave_height = wave_bg.size
+    
+    # Calculate horizontal offset based on time (for scrolling effect)
+    # Scroll through the entire width over 24 hours
+    current_time = datetime.datetime.now()
+    minutes_since_midnight = current_time.hour * 60 + current_time.minute
+    # Complete one full scroll every 24 hours
+    scroll_offset = int((minutes_since_midnight / (24 * 60)) * wave_width)
+    
+    # Create a mask for the area below the tide curve
+    mask = Image.new('L', (img.width, img.height), 0)
+    mask_draw = ImageDraw.Draw(mask)
+    
+    # Build polygon points for the area below the curve
+    polygon_points = [(graph_left, graph_bottom)]
+    polygon_points.extend(curve_points)
+    polygon_points.append((graph_right, graph_bottom))
+    
+    # Fill the area below the curve in the mask
+    mask_draw.polygon(polygon_points, fill=255)
+    
+    # Create a temporary image to composite the wave background
+    temp_img = Image.new('L', (img.width, img.height), 255)
+    
+    # Tile the wave background horizontally, starting from the scroll offset
+    graph_width = graph_right - graph_left
+    x_start = graph_left
+    
+    while x_start < graph_right:
+        # Calculate how much of the wave image to use
+        src_x = (scroll_offset + (x_start - graph_left)) % wave_width
+        remaining_width = min(wave_width - src_x, graph_right - x_start)
+        
+        # Scale the wave height to fit between tide curve and graph bottom
+        # Find the average height of the tide curve in this section
+        curve_x_start = x_start - graph_left
+        curve_x_end = min(curve_x_start + remaining_width, len(curve_points) - 1)
+        
+        # Get the y-coordinate range for this section
+        section_curve_points = [p for p in curve_points if x_start <= p[0] < x_start + remaining_width]
+        if section_curve_points:
+            min_y = min(p[1] for p in section_curve_points)
+            available_height = graph_bottom - min_y
+            
+            # Scale wave to fit in available height
+            if available_height > 0:
+                scale_factor = available_height / wave_height
+                scaled_height = int(wave_height * scale_factor)
+                
+                # Crop and scale the wave section
+                wave_section = wave_bg.crop((src_x, 0, src_x + remaining_width, wave_height))
+                # Use LANCZOS constant directly for compatibility with older Pillow versions
+                wave_section = wave_section.resize((remaining_width, scaled_height), Image.LANCZOS)
+                
+                # Convert to grayscale
+                wave_section = wave_section.convert('L')
+                
+                # Paste the wave section
+                temp_img.paste(wave_section, (x_start, graph_bottom - scaled_height))
+        
+        x_start += remaining_width
+    
+    # Apply the mask to composite only below the tide curve
+    img.paste(temp_img, (0, 0), mask)
+
 def plot_tide_data(draw, width, height, tide_data, graph_params):
     """Plot the tide data as a smooth bezier curve with high/low points marked"""
     graph_top, graph_bottom, graph_left, graph_right, graph_height, tide_min, tide_max = graph_params
@@ -224,10 +298,8 @@ def plot_tide_data(draw, width, height, tide_data, graph_params):
                                         graph_bottom, graph_height,
                                         tide_min, tide_max)
     
-    # Draw the tide curve with a simple smooth line, no fill or texture
-    if curve_points:
-        # Draw the curve with a clean line
-        draw.line(curve_points, fill=0, width=3)
+    # Return curve points so they can be used for wave background
+    return curve_points
     
     # Mark high and low tide points
     font = load_font(20)

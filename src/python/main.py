@@ -14,7 +14,7 @@ from PIL import Image, ImageDraw, ImageFont
 # Import local modules
 from data.tide_api import get_tide_data
 from render.sky import draw_sky, WIDTH, HEIGHT
-from render.tide import draw_graph_axes, plot_tide_data
+from render.tide import draw_graph_axes, plot_tide_data, apply_wave_background
 
 def add_footer(draw, width, height):
     """Add footer text with generation time"""
@@ -57,8 +57,56 @@ def generate_tide_chart(tide_data, output_path, is_night=None):
     # Draw graph axes and get graph parameters
     graph_params = draw_graph_axes(draw, WIDTH, HEIGHT, tide_min, tide_max)
     
-    # Plot tide data
-    plot_tide_data(draw, WIDTH, HEIGHT, tide_data, graph_params)
+    # Plot tide data and get curve points
+    curve_points = plot_tide_data(draw, WIDTH, HEIGHT, tide_data, graph_params)
+    
+    # Apply wave background below tide curve
+    if curve_points:
+        apply_wave_background(img, draw, curve_points, graph_params[1], graph_params[2], graph_params[3])
+        
+        # Redraw the tide curve on top of the wave background
+        draw.line(curve_points, fill=0, width=3)
+        
+        # Re-mark high and low tide points
+        from render.sky import load_font
+        font = load_font(20)
+        
+        for i, point in enumerate(tide_data):
+            time_val = point['hour'] + point['minute']/60
+            x_pos = graph_params[2] + (time_val / 24) * (graph_params[3] - graph_params[2])
+            y_pos = graph_params[1] - ((point['height'] - graph_params[5]) / (graph_params[6] - graph_params[5])) * graph_params[4]
+            
+            # Draw circle around point
+            radius = 8
+            draw.ellipse([
+                (x_pos-radius, y_pos-radius),
+                (x_pos+radius, y_pos+radius)
+            ], fill=255, outline=0, width=2)
+            
+            # Label with time and height
+            time_str = f"{point['hour']:02d}:{point['minute']:02d}"
+            height_str = f"{point['height']:.1f}m"
+            
+            # Position label above or below point based on position
+            if point.get('type') == 'H':  # High tide
+                label_y = y_pos - 40
+                label = f"High: {time_str}, {height_str}"
+            elif point.get('type') == 'L':  # Low tide
+                label_y = y_pos + 25
+                label = f"Low: {time_str}, {height_str}"
+            else:
+                label_y = y_pos - 40 if i % 2 == 0 else y_pos + 25
+                label = f"{time_str}, {height_str}"
+            
+            # Draw label with white background for readability
+            text_width = len(label) * 10
+            text_height = 25
+            draw.rectangle([
+                (x_pos - text_width/2, label_y),
+                (x_pos + text_width/2, label_y + text_height)
+            ], fill=255)
+            
+            draw.text((x_pos - text_width/2 + 5, label_y), label, fill=0, font=font)
     
     # Add footer
     add_footer(draw, WIDTH, HEIGHT)
