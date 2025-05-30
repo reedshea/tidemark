@@ -12,9 +12,10 @@ import os
 from PIL import Image, ImageDraw, ImageFont
 
 # Import local modules
-from data.tide_api import get_tide_data
+from data.tide_api import get_tide_data, GREAT_HILL_CONSTITUENTS
+from data.moon_data import get_moon_events
 from render.sky import draw_sky, WIDTH, HEIGHT
-from render.tide import draw_graph_axes, plot_tide_data, apply_wave_background
+from render.tide import draw_graph_axes, plot_tide_data, apply_wave_background, draw_moon_arc
 
 def add_footer(draw, width, height):
     """Add footer text with generation time"""
@@ -56,6 +57,15 @@ def generate_tide_chart(tide_data, output_path, is_night=None):
     
     # Draw graph axes and get graph parameters
     graph_params = draw_graph_axes(draw, WIDTH, HEIGHT, tide_min, tide_max)
+    
+    # Get moon data for today
+    moon_data = get_moon_events()
+    
+    # Get mean tide level from constituents
+    mean_tide_level = GREAT_HILL_CONSTITUENTS['mean_tide_level']
+    
+    # Draw moon arc before tide curve so it appears behind
+    draw_moon_arc(draw, moon_data, graph_params, mean_tide_level)
     
     # Plot tide data and get curve points
     curve_points = plot_tide_data(draw, WIDTH, HEIGHT, tide_data, graph_params)

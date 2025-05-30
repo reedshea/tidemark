@@ -3,6 +3,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import os
 import datetime
+import math
 
 from render.sky import load_font, SKY_HEIGHT, GRAPH_MARGIN_LEFT, GRAPH_MARGIN_RIGHT, GRAPH_MARGIN_BOTTOM, GRAPH_MARGIN_TOP
 
@@ -340,3 +341,138 @@ def plot_tide_data(draw, width, height, tide_data, graph_params):
         ], fill=255)
         
         draw.text((x_pos - text_width/2 + 5, label_y), label, fill=0, font=font)
+
+def draw_moon_arc(draw, moon_data, graph_params, mean_tide_level):
+    """Draw moon path arc from moonrise to moonset"""
+    graph_top, graph_bottom, graph_left, graph_right, graph_height, tide_min, tide_max = graph_params
+    graph_width = graph_right - graph_left
+    
+    if not moon_data or not moon_data.get('moonrise') or not moon_data.get('moonset'):
+        return
+    
+    # Calculate x positions for moonrise and moonset
+    moonrise_time = moon_data['moonrise']['hour'] + moon_data['moonrise']['minute'] / 60.0
+    moonset_time = moon_data['moonset']['hour'] + moon_data['moonset']['minute'] / 60.0
+    
+    # Handle case where moonset is after midnight (early morning)
+    if moonset_time < moonrise_time:
+        # Don't draw arc if it spans midnight
+        return
+    
+    moonrise_x = graph_left + (moonrise_time / 24) * graph_width
+    moonset_x = graph_left + (moonset_time / 24) * graph_width
+    
+    # Calculate y position for the horizon (mean tide level)
+    horizon_y = graph_bottom - ((mean_tide_level - tide_min) / (tide_max - tide_min)) * graph_height
+    
+    # Arc parameters
+    arc_width = moonset_x - moonrise_x
+    arc_center_x = (moonrise_x + moonset_x) / 2
+    
+    # Height should be 80% of the available space above horizon
+    available_height = horizon_y - graph_top
+    arc_height = available_height * 0.8
+    arc_radius = arc_width / 2
+    
+    # Draw dotted arc
+    num_dots = 50
+    for i in range(num_dots + 1):
+        # Calculate angle from 0 to pi (semicircle)
+        angle = math.pi * i / num_dots
+        
+        # Calculate position
+        x = arc_center_x - arc_radius * math.cos(angle)
+        y = horizon_y - arc_height * math.sin(angle)
+        
+        # Draw small circle for dotted effect
+        if i % 2 == 0:  # Draw every other dot
+            draw.ellipse([(x-2, y-2), (x+2, y+2)], fill=0)
+    
+    # Draw moon phase at the top of the arc
+    moon_x = arc_center_x
+    moon_y = horizon_y - arc_height
+    draw_moon_phase(draw, moon_x, moon_y, moon_data.get('phase', 0.5))
+
+def draw_moon_phase(draw, x, y, phase):
+    """Draw moon with current phase at specified position"""
+    moon_radius = 20
+    
+    # Draw moon outline
+    draw.ellipse([
+        (x - moon_radius, y - moon_radius),
+        (x + moon_radius, y + moon_radius)
+    ], outline=0, width=2)
+    
+    # Calculate illuminated portion
+    # Phase: 0 = New, 0.25 = First Quarter, 0.5 = Full, 0.75 = Last Quarter
+    
+    if phase < 0.5:
+        # Waxing (right side illuminated)
+        # Draw the dark left side
+        if phase < 0.25:
+            # Crescent - dark side is convex
+            curve_offset = moon_radius * math.cos(phase * 2 * math.pi)
+            points = []
+            for i in range(21):
+                angle = -math.pi/2 + math.pi * i / 20
+                y_offset = moon_radius * math.sin(angle)
+                x_offset = curve_offset * math.cos(angle)
+                points.append((x + x_offset, y + y_offset))
+            # Complete the shape
+            for i in range(20, -1, -1):
+                angle = -math.pi/2 + math.pi * i / 20
+                y_offset = moon_radius * math.sin(angle)
+                x_offset = -moon_radius * math.cos(angle)
+                points.append((x + x_offset, y + y_offset))
+            draw.polygon(points, fill=128)  # Gray for dark side
+        else:
+            # Gibbous - dark side is concave
+            curve_offset = moon_radius * math.cos((0.5 - phase) * 2 * math.pi)
+            points = []
+            for i in range(21):
+                angle = -math.pi/2 + math.pi * i / 20
+                y_offset = moon_radius * math.sin(angle)
+                x_offset = -curve_offset * math.cos(angle)
+                points.append((x + x_offset, y + y_offset))
+            # Complete the shape
+            for i in range(20, -1, -1):
+                angle = -math.pi/2 + math.pi * i / 20
+                y_offset = moon_radius * math.sin(angle)
+                x_offset = -moon_radius * math.cos(angle)
+                points.append((x + x_offset, y + y_offset))
+            draw.polygon(points, fill=128)
+    else:
+        # Waning (left side illuminated)
+        # Draw the dark right side
+        if phase < 0.75:
+            # Gibbous - dark side is concave
+            curve_offset = moon_radius * math.cos((phase - 0.5) * 2 * math.pi)
+            points = []
+            for i in range(21):
+                angle = -math.pi/2 + math.pi * i / 20
+                y_offset = moon_radius * math.sin(angle)
+                x_offset = curve_offset * math.cos(angle)
+                points.append((x + x_offset, y + y_offset))
+            # Complete the shape
+            for i in range(20, -1, -1):
+                angle = -math.pi/2 + math.pi * i / 20
+                y_offset = moon_radius * math.sin(angle)
+                x_offset = moon_radius * math.cos(angle)
+                points.append((x + x_offset, y + y_offset))
+            draw.polygon(points, fill=128)
+        else:
+            # Crescent - dark side is convex
+            curve_offset = moon_radius * math.cos((1 - phase) * 2 * math.pi)
+            points = []
+            for i in range(21):
+                angle = -math.pi/2 + math.pi * i / 20
+                y_offset = moon_radius * math.sin(angle)
+                x_offset = -curve_offset * math.cos(angle)
+                points.append((x + x_offset, y + y_offset))
+            # Complete the shape
+            for i in range(20, -1, -1):
+                angle = -math.pi/2 + math.pi * i / 20
+                y_offset = moon_radius * math.sin(angle)
+                x_offset = moon_radius * math.cos(angle)
+                points.append((x + x_offset, y + y_offset))
+            draw.polygon(points, fill=128)
