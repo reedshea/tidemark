@@ -27,7 +27,7 @@ def add_footer(draw, width, height):
     footer_text = f"TIDEMARK | Generated: {current_time}"
     draw.text((width/2 - 200, height - 40), footer_text, fill=0, font=font)
 
-def generate_tide_chart(tide_data, output_path, is_night=None):
+def generate_tide_chart(tide_data, output_path, is_night=None, hours=24, start_time=None):
     """
     Generate a complete tide chart image
     
@@ -35,6 +35,8 @@ def generate_tide_chart(tide_data, output_path, is_night=None):
     - tide_data: List of dictionaries, each with 'hour', 'minute', 'height', and optional 'type' ('H' or 'L')
     - output_path: Path to save the BMP file
     - is_night: Force night/day mode, or None to determine based on current time
+    - hours: Number of hours to display (default: 24)
+    - start_time: Starting datetime for the chart (default: midnight)
     """
     # Create blank image with night background (8-bit grayscale)
     img = Image.new('L', (WIDTH, HEIGHT), 225)  # Start with 40% grey (night)
@@ -70,20 +72,20 @@ def generate_tide_chart(tide_data, output_path, is_night=None):
     
     # Get sun data and draw sun background first (bottom layer)
     sun_data = get_sun_events()
-    draw_sun_background(img, draw, sun_data, graph_params, mean_tide_level)
+    draw_sun_background(img, draw, sun_data, graph_params, mean_tide_level, hours, start_time)
     
     # Get moon data for today
     moon_data = get_moon_events()
     
     # Draw moon arc on top of sun background
-    draw_moon_arc(draw, moon_data, graph_params, mean_tide_level)
+    draw_moon_arc(draw, moon_data, graph_params, mean_tide_level, hours, start_time)
     
     # Plot tide data and get curve points
-    curve_points = plot_tide_data(draw, WIDTH, HEIGHT, tide_data, graph_params)
+    curve_points = plot_tide_data(draw, WIDTH, HEIGHT, tide_data, graph_params, hours)
     
     # Apply wave background below tide curve
     if curve_points:
-        apply_wave_background(img, draw, curve_points, graph_params[1], graph_params[2], graph_params[3])
+        apply_wave_background(img, draw, curve_points, graph_params[1], graph_params[2], graph_params[3], hours, start_time)
         
         # Redraw the tide curve on top of the wave background
         draw.line(curve_points, fill=0, width=3)
@@ -93,8 +95,12 @@ def generate_tide_chart(tide_data, output_path, is_night=None):
         font = load_font(20)
         
         for i, point in enumerate(tide_data):
-            time_val = point['hour'] + point['minute']/60
-            x_pos = graph_params[2] + (time_val / 24) * (graph_params[3] - graph_params[2])
+            # Use hours_since_start if available
+            if 'hours_since_start' in point:
+                time_val = point['hours_since_start']
+            else:
+                time_val = point['hour'] + point['minute']/60
+            x_pos = graph_params[2] + (time_val / hours) * (graph_params[3] - graph_params[2])
             y_pos = graph_params[1] - ((point['height'] - graph_params[5]) / (graph_params[6] - graph_params[5])) * graph_params[4]
             
             # Draw circle around point
@@ -130,7 +136,7 @@ def generate_tide_chart(tide_data, output_path, is_night=None):
             draw.text((x_pos - text_width/2 + 5, label_y), label, fill=0, font=font)
     
     # Draw graph axes and labels on top of everything
-    draw_graph_axes(draw, WIDTH, HEIGHT, tide_min, tide_max)
+    draw_graph_axes(draw, WIDTH, HEIGHT, tide_min, tide_max, hours, start_time)
     
     # Add footer
     add_footer(draw, WIDTH, HEIGHT)
@@ -145,12 +151,17 @@ def generate_tide_chart(tide_data, output_path, is_night=None):
 
 def generate_sample_chart():
     """Generate a sample chart with sample tide data"""
-    # Get sample tide data
-    sample_data = get_tide_data()
+    # Get sample tide data for 36 hours starting from current time
+    now = datetime.datetime.now()
+    minutes = now.minute
+    rounded_minutes = (minutes // 5) * 5
+    start_time = now.replace(minute=rounded_minutes, second=0, microsecond=0)
+    
+    sample_data = get_tide_data(hours=36)
     
     # Generate a day and night version
-    generate_tide_chart(sample_data, "/tmp/tide_chart_day.bmp", is_night=False)
-    generate_tide_chart(sample_data, "/tmp/tide_chart_night.bmp", is_night=True)
+    generate_tide_chart(sample_data, "/tmp/tide_chart_day.bmp", is_night=False, hours=36, start_time=start_time)
+    generate_tide_chart(sample_data, "/tmp/tide_chart_night.bmp", is_night=True, hours=36, start_time=start_time)
     print("Sample charts generated")
 
 if __name__ == "__main__":
@@ -165,8 +176,13 @@ if __name__ == "__main__":
     if args.sample:
         generate_sample_chart()
     else:
-        # Get actual tide data
-        tide_data = get_tide_data()
+        # Get actual tide data for 36 hours starting from current time
+        now = datetime.datetime.now()
+        minutes = now.minute
+        rounded_minutes = (minutes // 5) * 5
+        start_time = now.replace(minute=rounded_minutes, second=0, microsecond=0)
+        
+        tide_data = get_tide_data(hours=36)
         
         is_night = None
         if args.night:
@@ -174,4 +190,4 @@ if __name__ == "__main__":
         elif args.day:
             is_night = False
         
-        generate_tide_chart(tide_data, args.output, is_night=is_night)
+        generate_tide_chart(tide_data, args.output, is_night=is_night, hours=36, start_time=start_time)

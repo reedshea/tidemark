@@ -7,8 +7,16 @@ import math
 
 from render.sky import load_font, GRAPH_MARGIN_LEFT, GRAPH_MARGIN_RIGHT, GRAPH_MARGIN_BOTTOM, GRAPH_MARGIN_TOP
 
-def draw_graph_axes(draw, width, height, tide_min, tide_max):
-    """Draw the graph axes and labels"""
+def draw_graph_axes(draw, width, height, tide_min, tide_max, hours=24, start_time=None):
+    """Draw the graph axes and labels
+    
+    Parameters:
+    - draw: PIL ImageDraw object
+    - width, height: Image dimensions
+    - tide_min, tide_max: Min/max tide heights for scaling
+    - hours: Number of hours to display (default: 24)
+    - start_time: Starting datetime for x-axis (default: midnight)
+    """
     # Calculate graph area dimensions
     graph_top = GRAPH_MARGIN_TOP
     graph_bottom = height - GRAPH_MARGIN_BOTTOM
@@ -68,15 +76,29 @@ def draw_graph_axes(draw, width, height, tide_min, tide_max):
     # Add time labels (every 3 hours)
     time_font = load_font(20)
     
-    # Draw 24-hour time scale
-    for hour in range(0, 25, 3):
-        x_pos = graph_left + (hour / 24) * (graph_right - graph_left)
+    # If no start_time provided, use midnight
+    if start_time is None:
+        start_time = datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # Draw time scale for specified hours
+    # Calculate interval - for 36 hours, use 4-hour intervals, for 24 hours use 3-hour intervals
+    interval = 4 if hours > 24 else 3
+    
+    for hour_offset in range(0, hours + 1, interval):
+        x_pos = graph_left + (hour_offset / hours) * (graph_right - graph_left)
         
         # Draw tick mark
         draw.line([(x_pos, graph_bottom), (x_pos, graph_bottom + 5)], fill=0, width=2)
         
-        # Label
-        time_label = f"{hour:02d}:00"
+        # Calculate actual time
+        label_time = start_time + datetime.timedelta(hours=hour_offset)
+        
+        # Format label - show date if it's a different day
+        if label_time.date() != start_time.date():
+            time_label = label_time.strftime("%m/%d %H:%M")
+        else:
+            time_label = label_time.strftime("%H:%M")
+        
         label_width = len(time_label) * 8  # Approximate width
         draw.text((x_pos - label_width/2, graph_bottom + 10), time_label, fill=0, font=time_font)
         
@@ -84,10 +106,17 @@ def draw_graph_axes(draw, width, height, tide_min, tide_max):
     
     return graph_top, graph_bottom, graph_left, graph_right, graph_height, tide_min_rounded, tide_max_rounded
 
-def generate_sinusoid_curve(high_low_points, graph_left, graph_right, graph_bottom, graph_height, tide_min, tide_max):
+def generate_sinusoid_curve(high_low_points, graph_left, graph_right, graph_bottom, graph_height, tide_min, tide_max, hours=24):
     """
     Generate a smooth sine-like curve that passes exactly through high and low tide points.
     Uses cubic spline interpolation to create a natural tide curve.
+    
+    Parameters:
+    - high_low_points: List of (time_in_hours, height) tuples
+    - graph_left, graph_right: X-axis boundaries
+    - graph_bottom, graph_height: Y-axis parameters
+    - tide_min, tide_max: Height range for scaling
+    - hours: Total hours to display
     """
     # Sort points by time
     sorted_points = sorted(high_low_points, key=lambda p: p[0])
@@ -96,7 +125,7 @@ def generate_sinusoid_curve(high_low_points, graph_left, graph_right, graph_bott
     # The tide API should now provide points at 0:00 and 24:00
     
     # Generate enough points for a smooth curve
-    num_points = 240  # 10 points per hour
+    num_points = int(hours * 10)  # 10 points per hour
     curve_points = []
     
     # Get the x range of the graph
@@ -106,11 +135,10 @@ def generate_sinusoid_curve(high_low_points, graph_left, graph_right, graph_bott
     times = [p[0] for p in sorted_points]
     heights = [p[1] for p in sorted_points]
     
-    # Only generate curve points for the visible 0-24 hour range
-    # But use the extended data for proper interpolation
+    # Generate curve points for the visible hour range
     for i in range(num_points + 1):
-        # Calculate current time value (0-24 hours)
-        time_of_day = (i / num_points) * 24
+        # Calculate current time value (0 to hours)
+        time_of_day = (i / num_points) * hours
         
         # Find the surrounding data points
         if time_of_day <= times[0]:
@@ -170,7 +198,7 @@ def generate_sinusoid_curve(high_low_points, graph_left, graph_right, graph_bott
             )
         
         # Calculate x coordinate
-        x = graph_left + (time_of_day / 24) * x_range
+        x = graph_left + (time_of_day / hours) * x_range
         
         # Convert height to pixel coordinates
         y_pixel = graph_bottom - ((height - tide_min) / (tide_max - tide_min)) * graph_height
@@ -180,8 +208,18 @@ def generate_sinusoid_curve(high_low_points, graph_left, graph_right, graph_bott
     
     return curve_points
 
-def apply_wave_background(img, draw, curve_points, graph_bottom, graph_left, graph_right):
-    """Apply wave background image below the tide curve"""
+def apply_wave_background(img, draw, curve_points, graph_bottom, graph_left, graph_right, hours=24, start_time=None):
+    """Apply wave background image below the tide curve
+    
+    Parameters:
+    - img: PIL Image object
+    - draw: PIL ImageDraw object  
+    - curve_points: List of (x, y) points defining the tide curve
+    - graph_bottom: Bottom y-coordinate of graph
+    - graph_left, graph_right: Left and right x-coordinates of graph
+    - hours: Number of hours displayed
+    - start_time: Starting datetime for the display
+    """
     # Load wave background image
     wave_bg_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'wave-background.png')
     if not os.path.exists(wave_bg_path):
@@ -191,8 +229,12 @@ def apply_wave_background(img, draw, curve_points, graph_bottom, graph_left, gra
     wave_width, wave_height = wave_bg.size
     
     # Calculate horizontal offset based on time (for scrolling effect)
-    # Scroll through the entire width over 24 hours
-    current_time = datetime.datetime.now()
+    if start_time:
+        current_time = start_time
+    else:
+        current_time = datetime.datetime.now()
+    
+    # Scroll based on time of day for consistent wave position
     minutes_since_midnight = current_time.hour * 60 + current_time.minute
     # Complete one full scroll every 24 hours
     scroll_offset = int((minutes_since_midnight / (24 * 60)) * wave_width)
@@ -253,8 +295,16 @@ def apply_wave_background(img, draw, curve_points, graph_bottom, graph_left, gra
     # Apply the mask to composite only below the tide curve
     img.paste(temp_img, (0, 0), mask)
 
-def plot_tide_data(draw, width, height, tide_data, graph_params):
-    """Plot the tide data as a smooth bezier curve with high/low points marked"""
+def plot_tide_data(draw, width, height, tide_data, graph_params, hours=24):
+    """Plot the tide data as a smooth bezier curve with high/low points marked
+    
+    Parameters:
+    - draw: PIL ImageDraw object  
+    - width, height: Image dimensions
+    - tide_data: List of tide data points
+    - graph_params: Tuple of graph parameters
+    - hours: Number of hours to display
+    """
     graph_top, graph_bottom, graph_left, graph_right, graph_height, tide_min, tide_max = graph_params
     graph_width = graph_right - graph_left
     
@@ -267,8 +317,13 @@ def plot_tide_data(draw, width, height, tide_data, graph_params):
     # If we have actual tide data, use it to separate high/low points
     if tide_data:
         for point in tide_data:
-            time_val = point['hour'] + point['minute']/60
-            if 0 <= time_val <= 24:  # Only include points in the 24-hour range
+            # Use hours_since_start if available, otherwise calculate from hour/minute
+            if 'hours_since_start' in point:
+                time_val = point['hours_since_start']
+            else:
+                time_val = point['hour'] + point['minute']/60
+            
+            if 0 <= time_val <= hours:  # Only include points in the display range
                 if point.get('type') == 'H':
                     high_tide_points.append((time_val, point['height']))
                 elif point.get('type') == 'L':
@@ -278,10 +333,12 @@ def plot_tide_data(draw, width, height, tide_data, graph_params):
     
     # If we don't have enough high or low tide points, generate synthetic ones
     if len(high_tide_points) < 2:
-        high_tide_points = [(0, 3.0), (12, 3.0), (24, 3.0)]
+        # Create synthetic high tide points distributed across the time range
+        high_tide_points = [(i * hours / 2, 3.0) for i in range(3)]
     
     if len(low_tide_points) < 2:
-        low_tide_points = [(6, 0.5), (18, 0.5)]
+        # Create synthetic low tide points between high tides
+        low_tide_points = [(hours / 4, 0.5), (3 * hours / 4, 0.5)]
     
     # Combine and sort all points by time
     # Include boundary points to ensure smooth curves at edges
@@ -291,7 +348,7 @@ def plot_tide_data(draw, width, height, tide_data, graph_params):
     # Convert to pixel coordinates
     pixel_points = []
     for t, h in all_points:
-        x = graph_left + (t / 24) * graph_width
+        x = graph_left + (t / hours) * graph_width
         y = graph_bottom - ((h - tide_min) / (tide_max - tide_min)) * graph_height
         pixel_points.append((x, y))
     
@@ -299,7 +356,7 @@ def plot_tide_data(draw, width, height, tide_data, graph_params):
     curve_points = generate_sinusoid_curve(all_points, 
                                         graph_left, graph_right, 
                                         graph_bottom, graph_height,
-                                        tide_min, tide_max)
+                                        tide_min, tide_max, hours)
     
     # Return curve points so they can be used for wave background
     return curve_points
@@ -344,12 +401,22 @@ def plot_tide_data(draw, width, height, tide_data, graph_params):
         
         draw.text((x_pos - text_width/2 + 5, label_y), label, fill=0, font=font)
 
-def draw_sun_background(img, draw, sun_data, graph_params, mean_tide_level):
-    """Draw sun arc with gradient background representing day/night"""
+def draw_sun_background(img, draw, sun_data, graph_params, mean_tide_level, hours=24, start_time=None):
+    """Draw sun arc with gradient background representing day/night
+    
+    Parameters:
+    - img: PIL Image object
+    - draw: PIL ImageDraw object
+    - sun_data: Dictionary with sun event times
+    - graph_params: Tuple of graph parameters
+    - mean_tide_level: Mean tide level for horizon
+    - hours: Number of hours displayed
+    - start_time: Starting datetime for the display
+    """
     graph_top, graph_bottom, graph_left, graph_right, graph_height, tide_min, tide_max = graph_params
     graph_width = graph_right - graph_left
     
-    if not sun_data:
+    if not sun_data or not start_time:
         return
     
     # Get sun event times
@@ -358,11 +425,23 @@ def draw_sun_background(img, draw, sun_data, graph_params, mean_tide_level):
     sunset_time = sun_data['sunset']['hour'] + sun_data['sunset']['minute'] / 60.0
     nautical_dusk_time = sun_data['nautical_dusk']['hour'] + sun_data['nautical_dusk']['minute'] / 60.0
     
-    # Calculate x positions
-    sunrise_x = graph_left + (sunrise_time / 24) * graph_width
-    sunset_x = graph_left + (sunset_time / 24) * graph_width
-    dawn_x = graph_left + (nautical_dawn_time / 24) * graph_width
-    dusk_x = graph_left + (nautical_dusk_time / 24) * graph_width
+    # Convert to hours since start_time
+    start_hour = start_time.hour + start_time.minute / 60.0
+    
+    # Calculate x positions - handle events that may be on different days
+    def time_to_x(event_hour):
+        # Calculate hours since start
+        hours_since_start = event_hour - start_hour
+        if hours_since_start < 0:
+            hours_since_start += 24  # Next day
+        if hours_since_start > hours:
+            return None  # Outside display range
+        return graph_left + (hours_since_start / hours) * graph_width
+    
+    sunrise_x = time_to_x(sunrise_time)
+    sunset_x = time_to_x(sunset_time)
+    dawn_x = time_to_x(nautical_dawn_time)
+    dusk_x = time_to_x(nautical_dusk_time)
     
     # Calculate y position for the horizon (mean tide level)
     horizon_y = graph_bottom - ((mean_tide_level - tide_min) / (tide_max - tide_min)) * graph_height
@@ -386,12 +465,20 @@ def draw_sun_background(img, draw, sun_data, graph_params, mean_tide_level):
     
     # Simple approach: Draw circular gradient at noon position
     # Calculate noon position (middle of sunrise and sunset)
-    noon_x = (sunrise_x + sunset_x) / 2
+    if sunrise_x and sunset_x:
+        noon_x = (sunrise_x + sunset_x) / 2
+    else:
+        # If sunrise or sunset is not visible, estimate based on available data
+        noon_x = graph_left + graph_width / 2
     noon_y = img.height * 0.6  # Center at 40% from bottom (60% from top)
     
     # Calculate the radius needed for sunrise/sunset to intersect at horizon
     # Distance from noon to sunrise/sunset horizontally
-    sun_arc_half_width = (sunset_x - sunrise_x) / 2
+    if sunrise_x and sunset_x:
+        sun_arc_half_width = abs(sunset_x - sunrise_x) / 2
+    else:
+        sun_arc_half_width = graph_width / 3  # Default estimate
+    
     # Distance from center of display to horizon vertically
     center_to_horizon = abs(noon_y - horizon_y)
     # Calculate radius using Pythagorean theorem
@@ -399,7 +486,10 @@ def draw_sun_background(img, draw, sun_data, graph_params, mean_tide_level):
     
     # Calculate nautical twilight radius
     # Distance from noon to nautical dawn/dusk
-    twilight_arc_half_width = (dusk_x - dawn_x) / 2
+    if dawn_x and dusk_x:
+        twilight_arc_half_width = abs(dusk_x - dawn_x) / 2
+    else:
+        twilight_arc_half_width = graph_width / 2  # Default estimate
     twilight_radius = math.sqrt(twilight_arc_half_width**2 + center_to_horizon**2)
     
     # Define transition widths (in pixels)
@@ -485,25 +575,55 @@ def draw_sun_background(img, draw, sun_data, graph_params, mean_tide_level):
             (x_end, img.height)
         ], fill=color)
 
-def draw_moon_arc(draw, moon_data, graph_params, mean_tide_level):
-    """Draw moon path arc from moonrise to moonset"""
+def draw_moon_arc(draw, moon_data, graph_params, mean_tide_level, hours=24, start_time=None):
+    """Draw moon path arc from moonrise to moonset
+    
+    Parameters:
+    - draw: PIL ImageDraw object
+    - moon_data: Dictionary with moon event times
+    - graph_params: Tuple of graph parameters
+    - mean_tide_level: Mean tide level for horizon
+    - hours: Number of hours displayed
+    - start_time: Starting datetime for the display
+    """
     graph_top, graph_bottom, graph_left, graph_right, graph_height, tide_min, tide_max = graph_params
     graph_width = graph_right - graph_left
     
-    if not moon_data or not moon_data.get('moonrise') or not moon_data.get('moonset'):
+    if not moon_data or not moon_data.get('moonrise') or not moon_data.get('moonset') or not start_time:
         return
     
     # Calculate x positions for moonrise and moonset
     moonrise_time = moon_data['moonrise']['hour'] + moon_data['moonrise']['minute'] / 60.0
     moonset_time = moon_data['moonset']['hour'] + moon_data['moonset']['minute'] / 60.0
     
-    # Handle case where moonset is after midnight (early morning)
-    if moonset_time < moonrise_time:
-        # Don't draw arc if it spans midnight
+    # Convert to hours since start_time
+    start_hour = start_time.hour + start_time.minute / 60.0
+    
+    # Calculate hours since start for moonrise and moonset
+    moonrise_hours = moonrise_time - start_hour
+    if moonrise_hours < 0:
+        moonrise_hours += 24
+    
+    moonset_hours = moonset_time - start_hour
+    if moonset_hours < 0:
+        moonset_hours += 24
+    
+    # Handle case where moonset is before moonrise in our time window
+    if moonset_hours < moonrise_hours:
+        # If moonset is early in our window, it's from previous day's rise
+        if moonset_hours < 6:  # Within first 6 hours
+            # Don't draw this arc as the moonrise was before our start time
+            return
+        # Otherwise moonset is after our window
+        if moonrise_hours > hours:
+            return  # Both events outside our window
+    
+    # Only draw if both events are within our display window
+    if moonrise_hours > hours or moonset_hours > hours:
         return
     
-    moonrise_x = graph_left + (moonrise_time / 24) * graph_width
-    moonset_x = graph_left + (moonset_time / 24) * graph_width
+    moonrise_x = graph_left + (moonrise_hours / hours) * graph_width
+    moonset_x = graph_left + (moonset_hours / hours) * graph_width
     
     # Calculate y position for the horizon (mean tide level)
     horizon_y = graph_bottom - ((mean_tide_level - tide_min) / (tide_max - tide_min)) * graph_height

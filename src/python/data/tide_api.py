@@ -92,13 +92,14 @@ def calculate_tide_height(constituents, datetime_point):
     
     return height
 
-def find_extrema(heights, times):
+def find_extrema(heights, times, start_datetime=None):
     """
     Find local minima and maxima in the tide height data
     
     Parameters:
     - heights: List of tide heights
     - times: List of corresponding datetime objects
+    - start_datetime: Reference datetime for calculating relative hours
     
     Returns:
     - List of dictionaries for high and low tides
@@ -113,32 +114,43 @@ def find_extrema(heights, times):
         # Check for local maximum (high tide)
         if heights[i] > heights[i-1] and heights[i] > heights[i+1]:
             dt = times[i]
-            extrema.append({
+            entry = {
                 'hour': dt.hour,
                 'minute': dt.minute,
                 'height': round(heights[i], 2),
                 'type': 'H'
-            })
+            }
+            # Calculate hours since start if start_datetime is provided
+            if start_datetime:
+                hours_since_start = (dt - start_datetime).total_seconds() / 3600.0
+                entry['hours_since_start'] = hours_since_start
+            extrema.append(entry)
         
         # Check for local minimum (low tide)
         elif heights[i] < heights[i-1] and heights[i] < heights[i+1]:
             dt = times[i]
-            extrema.append({
+            entry = {
                 'hour': dt.hour,
                 'minute': dt.minute,
                 'height': round(heights[i], 2),
                 'type': 'L'
-            })
+            }
+            # Calculate hours since start if start_datetime is provided
+            if start_datetime:
+                hours_since_start = (dt - start_datetime).total_seconds() / 3600.0
+                entry['hours_since_start'] = hours_since_start
+            extrema.append(entry)
     
     return extrema
 
-def get_tide_data(location=None, date=None):
+def get_tide_data(location=None, date=None, hours=24):
     """
     Get tide data for a specific location and date
     
     Parameters:
     - location: String identifier for location or dictionary with station_id
     - date: Date to get tide data for (default: today)
+    - hours: Number of hours to generate data for (default: 24)
     
     Returns:
     - List of tide points (high and low tides)
@@ -147,12 +159,18 @@ def get_tide_data(location=None, date=None):
     cache_dir = os.path.expanduser("~/.tidemark")
     os.makedirs(cache_dir, exist_ok=True)
     
-    # Default to today if no date provided
+    # Default to current time if no date provided
     if date is None:
-        date = datetime.datetime.now().date()
+        # Round to nearest 5 minutes
+        now = datetime.datetime.now()
+        minutes = now.minute
+        rounded_minutes = (minutes // 5) * 5
+        start_datetime = now.replace(minute=rounded_minutes, second=0, microsecond=0)
+    else:
+        start_datetime = datetime.datetime.combine(date, datetime.time(0, 0))
     
-    # Format as YYYY-MM-DD
-    date_str = date.strftime("%Y-%m-%d")
+    # Format as YYYY-MM-DD-HH-MM for cache key
+    date_str = start_datetime.strftime("%Y-%m-%d-%H-%M")
     
     # Default to Great Hill if no location provided
     location_key = "great_hill"
@@ -170,8 +188,8 @@ def get_tide_data(location=None, date=None):
     else:
         constituent_data = GREAT_HILL_CONSTITUENTS  # Default to Great Hill
     
-    # Create a cache file name that includes the location
-    cache_file = os.path.join(cache_dir, f"tide_{location_key}_{date_str}.json")
+    # Create a cache file name that includes the location and hours
+    cache_file = os.path.join(cache_dir, f"tide_{location_key}_{date_str}_{hours}h.json")
     
     # Check cache first (to avoid recalculation)
     if os.path.exists(cache_file):
@@ -182,45 +200,48 @@ def get_tide_data(location=None, date=None):
             # If cache is corrupted, continue to calculate new data
             pass
     
-    # Calculate tide data for the full day
-    # Generate data points for the entire day (every 10 minutes)
-    start_datetime = datetime.datetime.combine(date, datetime.time(0, 0))
-    end_datetime = start_datetime + datetime.timedelta(days=1)
+    # Calculate tide data for the specified number of hours
+    # Generate data points every 10 minutes
+    end_datetime = start_datetime + datetime.timedelta(hours=hours)
     time_points = []
     height_points = []
     
     # Generate data points every 10 minutes
     current_time = start_datetime
-    while current_time < end_datetime:
+    while current_time <= end_datetime:
         time_points.append(current_time)
         height = calculate_tide_height(constituent_data, current_time)
         height_points.append(height)
         current_time += datetime.timedelta(minutes=10)
     
     # Find the extrema (high and low tides)
-    extrema = find_extrema(height_points, time_points)
+    extrema = find_extrema(height_points, time_points, start_datetime)
     
-    # Add boundary points by calculating tide heights at 0:00 and 24:00
+    # Add boundary points by calculating tide heights at start and end
     # This ensures we have data points at the exact edges
-    height_at_0 = calculate_tide_height(constituent_data, start_datetime)
-    height_at_24 = calculate_tide_height(constituent_data, end_datetime)
+    height_at_start = calculate_tide_height(constituent_data, start_datetime)
+    height_at_end = calculate_tide_height(constituent_data, end_datetime)
     
-    # Add the 0:00 point if it's not already an extrema
-    if not any(e['hour'] == 0 and e['minute'] == 0 for e in extrema):
+    # Add the start point if it's not already an extrema
+    if not any(e.get('hours_since_start', -1) == 0 for e in extrema):
         extrema.insert(0, {
-            'hour': 0,
-            'minute': 0,
-            'height': round(height_at_0, 2),
-            'type': 'B'  # Boundary point
+            'hour': start_datetime.hour,
+            'minute': start_datetime.minute,
+            'height': round(height_at_start, 2),
+            'type': 'B',  # Boundary point
+            'hours_since_start': 0
         })
     
-    # Add the 24:00 point if it's not already there
-    if not any(e['hour'] == 24 and e['minute'] == 0 for e in extrema):
+    # Add the end point if it's not already there
+    if not any(abs(e.get('hours_since_start', -1) - hours) < 0.01 for e in extrema):
+        end_hour = (start_datetime.hour + hours) % 24
+        end_minute = start_datetime.minute
         extrema.append({
-            'hour': 24,
-            'minute': 0,
-            'height': round(height_at_24, 2),
-            'type': 'B'  # Boundary point
+            'hour': end_hour,
+            'minute': end_minute,
+            'height': round(height_at_end, 2),
+            'type': 'B',  # Boundary point
+            'hours_since_start': hours
         })
     
     # Cache the result
