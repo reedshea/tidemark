@@ -37,7 +37,7 @@ def generate_tide_chart(tide_data, output_path, is_night=None):
     - is_night: Force night/day mode, or None to determine based on current time
     """
     # Create blank image with night background (8-bit grayscale)
-    img = Image.new('L', (WIDTH, HEIGHT), 153)  # Start with 40% grey (night)
+    img = Image.new('L', (WIDTH, HEIGHT), 225)  # Start with 40% grey (night)
     draw = ImageDraw.Draw(img)
     
     # Find tide min/max for proper scaling
@@ -46,8 +46,8 @@ def generate_tide_chart(tide_data, output_path, is_night=None):
     tide_max = max(heights) if heights else 4
     
     # Add a small buffer
-    tide_min = max(0, tide_min - 0.2)
-    tide_max = tide_max + 0.2
+    # tide_min = max(0, tide_min - 0.2)
+    # tide_max = tide_max + 0.2
     
     # Get mean tide level from constituents
     mean_tide_level = GREAT_HILL_CONSTITUENTS['mean_tide_level']

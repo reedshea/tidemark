@@ -379,8 +379,8 @@ def draw_sun_background(img, draw, sun_data, graph_params, mean_tide_level):
     
     # Draw background with distinct zones (no gradient)
     # Night is 40% grey (60% brightness = 153)
-    night_color = 153  # 40% grey = 60% brightness
-    twilight_color = 204  # 20% grey = 80% brightness
+    night_color = 224  # 
+    twilight_color = 240  # 
     day_color = 255  # White
     draw.rectangle([(0, 0), (img.width, img.height)], fill=night_color)
     
@@ -518,7 +518,7 @@ def draw_moon_arc(draw, moon_data, graph_params, mean_tide_level):
     arc_radius = arc_width / 2
     
     # Draw dotted arc
-    num_dots = 50
+    num_dots = 64
     for i in range(num_dots + 1):
         # Calculate angle from 0 to pi (semicircle)
         angle = math.pi * i / num_dots
@@ -528,8 +528,8 @@ def draw_moon_arc(draw, moon_data, graph_params, mean_tide_level):
         y = horizon_y - arc_height * math.sin(angle)
         
         # Draw small circle for dotted effect
-        if i % 2 == 0:  # Draw every other dot
-            draw.ellipse([(x-2, y-2), (x+2, y+2)], fill=0)
+        # if i % 2 == 0:  # Draw every other dot
+        draw.ellipse([(x-2, y-2), (x+2, y+2)], fill=0)
     
     # Draw moon phase at the top of the arc
     moon_x = arc_center_x
@@ -539,16 +539,24 @@ def draw_moon_arc(draw, moon_data, graph_params, mean_tide_level):
 def draw_moon_phase(draw, x, y, phase):
     """Draw moon with current phase at specified position"""
     moon_radius = 40
-    
-    # Draw moon outline
+
+    # Draw solid white moon to cover background/arc
+    draw.ellipse([
+        (x - moon_radius, y - moon_radius),
+        (x + moon_radius, y + moon_radius)
+    ], fill=255, outline=0, width=3)
+
+    # Draw moon outline (black)
     draw.ellipse([
         (x - moon_radius, y - moon_radius),
         (x + moon_radius, y + moon_radius)
     ], outline=0, width=2)
-    
+
     # Calculate illuminated portion
     # Phase: 0 = New, 0.25 = First Quarter, 0.5 = Full, 0.75 = Last Quarter
-    
+
+    dark_side_color = 64  # Dark side color (gray)
+
     if phase < 0.5:
         # Waxing (right side illuminated)
         # Draw the dark left side
@@ -567,7 +575,7 @@ def draw_moon_phase(draw, x, y, phase):
                 y_offset = moon_radius * math.sin(angle)
                 x_offset = -moon_radius * math.cos(angle)
                 points.append((x + x_offset, y + y_offset))
-            draw.polygon(points, fill=128)  # Gray for dark side
+            draw.polygon(points, fill=dark_side_color)  # Gray for dark side
         else:
             # Gibbous - dark side is concave
             curve_offset = moon_radius * math.cos((0.5 - phase) * 2 * math.pi)
@@ -583,7 +591,7 @@ def draw_moon_phase(draw, x, y, phase):
                 y_offset = moon_radius * math.sin(angle)
                 x_offset = -moon_radius * math.cos(angle)
                 points.append((x + x_offset, y + y_offset))
-            draw.polygon(points, fill=128)
+            draw.polygon(points, fill=dark_side_color)
     else:
         # Waning (left side illuminated)
         # Draw the dark right side
@@ -602,7 +610,7 @@ def draw_moon_phase(draw, x, y, phase):
                 y_offset = moon_radius * math.sin(angle)
                 x_offset = moon_radius * math.cos(angle)
                 points.append((x + x_offset, y + y_offset))
-            draw.polygon(points, fill=128)
+            draw.polygon(points, fill=dark_side_color)
         else:
             # Crescent - dark side is convex
             curve_offset = moon_radius * math.cos((1 - phase) * 2 * math.pi)
@@ -618,4 +626,4 @@ def draw_moon_phase(draw, x, y, phase):
                 y_offset = moon_radius * math.sin(angle)
                 x_offset = moon_radius * math.cos(angle)
                 points.append((x + x_offset, y + y_offset))
-            draw.polygon(points, fill=128)
+            draw.polygon(points, fill=dark_side_color)
