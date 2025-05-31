@@ -402,7 +402,7 @@ def plot_tide_data(draw, width, height, tide_data, graph_params, hours=24):
         draw.text((x_pos - text_width/2 + 5, label_y), label, fill=0, font=font)
 
 def draw_sun_background(img, draw, sun_events, graph_params, mean_tide_level, hours=24, start_time=None):
-    """Draw sun arc with gradient background representing day/night
+    """Draw sun gradient background representing day/night with linear gradient
     
     Parameters:
     - img: PIL Image object
@@ -419,162 +419,153 @@ def draw_sun_background(img, draw, sun_events, graph_params, mean_tide_level, ho
     if not sun_events or not start_time:
         return
     
-    # Extract sun events within our display window
-    dawn_events = [e for e in sun_events if e['type'] == 'nautical_dawn' and 0 <= e['hours_since_start'] <= hours]
-    sunrise_events = [e for e in sun_events if e['type'] == 'sunrise' and 0 <= e['hours_since_start'] <= hours]
-    sunset_events = [e for e in sun_events if e['type'] == 'sunset' and 0 <= e['hours_since_start'] <= hours]
-    dusk_events = [e for e in sun_events if e['type'] == 'nautical_dusk' and 0 <= e['hours_since_start'] <= hours]
+    # Extract all sun events (not just within window, we need them for proper transitions)
+    dawn_events = sorted([e for e in sun_events if e['type'] == 'nautical_dawn'], key=lambda x: x['hours_since_start'])
+    sunrise_events = sorted([e for e in sun_events if e['type'] == 'sunrise'], key=lambda x: x['hours_since_start'])
+    sunset_events = sorted([e for e in sun_events if e['type'] == 'sunset'], key=lambda x: x['hours_since_start'])
+    dusk_events = sorted([e for e in sun_events if e['type'] == 'nautical_dusk'], key=lambda x: x['hours_since_start'])
     
-    # Convert hours_since_start to x positions
-    def hours_to_x(hours_since_start):
-        return graph_left + (hours_since_start / hours) * graph_width
-    
-    # Calculate y position for the horizon (mean tide level)
-    horizon_y = graph_bottom - ((mean_tide_level - tide_min) / (tide_max - tide_min)) * graph_height
-    
-    # Draw background with distinct zones
+    # Color definitions
     night_color = 224
     twilight_color = 240
     day_color = 255  # White
-    draw.rectangle([(0, 0), (img.width, img.height)], fill=night_color)
     
-    # Process each day's sun events
-    for i in range(len(sunrise_events)):
-        # Try to find matching sunset for this sunrise
-        sunrise_x = hours_to_x(sunrise_events[i]['hours_since_start'])
-        
-        # Find the sunset that follows this sunrise
-        sunset_x = None
-        for sunset_event in sunset_events:
-            if sunset_event['hours_since_start'] > sunrise_events[i]['hours_since_start']:
-                sunset_x = hours_to_x(sunset_event['hours_since_start'])
-                break
-        
-        # If no sunset found, it might be after our window
-        if sunset_x is None and i < len(sunset_events):
-            # Use the next available sunset
-            sunset_x = hours_to_x(sunset_events[i]['hours_since_start'])
-        
-        # Find corresponding dawn and dusk
-        dawn_x = None
-        for dawn_event in dawn_events:
-            if dawn_event['hours_since_start'] < sunrise_events[i]['hours_since_start']:
-                dawn_x = hours_to_x(dawn_event['hours_since_start'])
-        
-        dusk_x = None
-        if sunset_x is not None:
-            for dusk_event in dusk_events:
-                if sunset_events and dusk_event['hours_since_start'] > sunset_events[0]['hours_since_start']:
-                    dusk_x = hours_to_x(dusk_event['hours_since_start'])
-                    break
-        
-        # Calculate noon position for this day
-        if sunrise_x is not None and sunset_x is not None:
-            noon_x = (sunrise_x + sunset_x) / 2
-        elif sunrise_x is not None:
-            # Estimate based on typical day length
-            noon_x = sunrise_x + (7 * graph_width / hours)  # 7 hours after sunrise
-        else:
-            continue  # Skip if we don't have enough data
-        
-        noon_y = img.height * 0.6
-        
-        # Calculate radii
-        if sunrise_x is not None and sunset_x is not None:
-            sun_arc_half_width = abs(sunset_x - sunrise_x) / 2
-        else:
-            sun_arc_half_width = graph_width / 3
-        
-        center_to_horizon = abs(noon_y - horizon_y)
-        sun_radius = math.sqrt(sun_arc_half_width**2 + center_to_horizon**2)
-        
-        # Calculate twilight radius
-        if dawn_x is not None and dusk_x is not None:
-            twilight_arc_half_width = abs(dusk_x - dawn_x) / 2
-        else:
-            twilight_arc_half_width = sun_arc_half_width * 1.5
-        twilight_radius = math.sqrt(twilight_arc_half_width**2 + center_to_horizon**2)
+    # Draw background with night color
+    draw.rectangle([(0, 0), (img.width, img.height)], fill=night_color)
     
     # Define transition widths (in pixels)
     sun_twilight_blend = 50  # Blend width between sun and twilight
     twilight_night_blend = 80  # Blend width between twilight and night
     
-    # Draw concentric semicircles with gradients at transitions
-    num_layers = 60
-    max_radius = twilight_radius + twilight_night_blend / 2
-    
-    for i in range(num_layers, 0, -1):
-        radius = (i / num_layers) * max_radius
+    # Draw vertical strips for horizontal gradient across entire display height
+    num_strips = 800
+    for strip in range(num_strips):
+        x_pos = strip * img.width / num_strips
+        x_start = x_pos
+        x_end = (strip + 1) * img.width / num_strips
         
-        # Determine color based on radius with smooth transitions
-        if radius <= sun_radius - sun_twilight_blend / 2:
-            # Core sun area
+        # Calculate hours since start for this x position
+        hours_at_x = (x_pos - graph_left) / graph_width * hours if x_pos >= graph_left else 0
+        
+        # Default to night
+        color = night_color
+        
+        # First, check if we're currently in daylight at the start
+        if hours_at_x < 0:
+            hours_at_x = 0
+            
+        # Check for current daylight state
+        # Find all relevant sun events around this time
+        prev_sunrise = None
+        next_sunrise = None
+        prev_sunset = None  
+        next_sunset = None
+        
+        # Find surrounding sunrise events
+        for i, sunrise in enumerate(sunrise_events):
+            if sunrise['hours_since_start'] <= hours_at_x:
+                prev_sunrise = sunrise
+            elif next_sunrise is None:
+                next_sunrise = sunrise
+                break
+                
+        # Find surrounding sunset events
+        for i, sunset in enumerate(sunset_events):
+            if sunset['hours_since_start'] <= hours_at_x:
+                prev_sunset = sunset
+            elif next_sunset is None:
+                next_sunset = sunset
+                break
+        
+        # Determine if we're currently in daylight
+        is_daylight = False
+        
+        # If we have a previous sunrise and no previous sunset, or previous sunrise is more recent
+        if prev_sunrise and (not prev_sunset or prev_sunrise['hours_since_start'] > prev_sunset['hours_since_start']):
+            # Last event was sunrise, check if sunset is coming
+            if next_sunset:
+                is_daylight = True
+        # If next event is a sunset (and not a sunrise first), we're in daylight
+        elif next_sunset and (not next_sunrise or next_sunset['hours_since_start'] < next_sunrise['hours_since_start']):
+            is_daylight = True
+            
+        if is_daylight:
             color = day_color
-        elif radius <= sun_radius + sun_twilight_blend / 2:
-            # Sun to twilight transition
-            t = (radius - (sun_radius - sun_twilight_blend / 2)) / sun_twilight_blend
-            color = int(day_color - (day_color - twilight_color) * t)
-        elif radius <= twilight_radius - twilight_night_blend / 2:
-            # Core twilight area
-            color = twilight_color
-        elif radius <= twilight_radius + twilight_night_blend / 2:
-            # Twilight to night transition
-            t = (radius - (twilight_radius - twilight_night_blend / 2)) / twilight_night_blend
-            color = int(twilight_color - (twilight_color - night_color) * t)
         else:
-            # Night area
-            color = night_color
+            # Find which sun cycle we're in by checking all events
+            for i in range(len(dawn_events)):
+                dawn_time = dawn_events[i]['hours_since_start']
+            
+                # Find corresponding sunrise
+                sunrise_time = None
+                for sunrise in sunrise_events:
+                    if sunrise['hours_since_start'] > dawn_time:
+                        sunrise_time = sunrise['hours_since_start']
+                        break
+                
+                # Find corresponding sunset
+                sunset_time = None
+                if sunrise_time:
+                    for sunset in sunset_events:
+                        if sunset['hours_since_start'] > sunrise_time:
+                            sunset_time = sunset['hours_since_start']
+                            break
+                
+                # Find corresponding dusk
+                dusk_time = None
+                if sunset_time:
+                    for dusk in dusk_events:
+                        if dusk['hours_since_start'] > sunset_time:
+                            dusk_time = dusk['hours_since_start']
+                            break
+                
+                # Calculate transition zones in hours
+                dawn_start = dawn_time - (twilight_night_blend / graph_width * hours / 2)
+                dawn_end = dawn_time + (twilight_night_blend / graph_width * hours / 2)
+                sunrise_start = sunrise_time - (sun_twilight_blend / graph_width * hours / 2) if sunrise_time else None
+                sunrise_end = sunrise_time + (sun_twilight_blend / graph_width * hours / 2) if sunrise_time else None
+                sunset_start = sunset_time - (sun_twilight_blend / graph_width * hours / 2) if sunset_time else None
+                sunset_end = sunset_time + (sun_twilight_blend / graph_width * hours / 2) if sunset_time else None
+                dusk_start = dusk_time - (twilight_night_blend / graph_width * hours / 2) if dusk_time else None
+                dusk_end = dusk_time + (twilight_night_blend / graph_width * hours / 2) if dusk_time else None
+                
+                # Check if we're in this sun cycle
+                if hours_at_x >= dawn_start and hours_at_x <= dawn_end:
+                    # Night to twilight transition
+                    t = (hours_at_x - dawn_start) / (dawn_end - dawn_start)
+                    color = int(night_color - (night_color - twilight_color) * t)
+                    break
+                elif sunrise_time and hours_at_x > dawn_end and hours_at_x < sunrise_start:
+                    # Twilight zone (dawn)
+                    color = twilight_color
+                    break
+                elif sunrise_time and hours_at_x >= sunrise_start and hours_at_x <= sunrise_end:
+                    # Twilight to day transition
+                    t = (hours_at_x - sunrise_start) / (sunrise_end - sunrise_start)
+                    color = int(twilight_color - (twilight_color - day_color) * t)
+                    break
+                elif sunrise_time and sunset_time and hours_at_x > sunrise_end and hours_at_x < sunset_start:
+                    # Day zone
+                    color = day_color
+                    break
+                elif sunset_time and hours_at_x >= sunset_start and hours_at_x <= sunset_end:
+                    # Day to twilight transition
+                    t = (hours_at_x - sunset_start) / (sunset_end - sunset_start)
+                    color = int(day_color - (day_color - twilight_color) * t)
+                    break
+                elif sunset_time and dusk_time and hours_at_x > sunset_end and hours_at_x < dusk_start:
+                    # Twilight zone (dusk)
+                    color = twilight_color
+                    break
+                elif dusk_time and hours_at_x >= dusk_start and hours_at_x <= dusk_end:
+                    # Twilight to night transition
+                    t = (hours_at_x - dusk_start) / (dusk_end - dusk_start)
+                    color = int(twilight_color - (twilight_color - night_color) * t)
+                    break
         
-        # Draw semicircle for this layer
-        points = []
-        for j in range(101):
-            angle = math.pi * j / 100  # 0 to pi for semicircle
-            x = noon_x + radius * math.cos(angle + math.pi)
-            y = noon_y + radius * math.sin(angle + math.pi)
-            if y <= noon_y:
-                points.append((x, y))
-        
-        if points:
-            points.append((noon_x + radius, noon_y))
-            points.append((noon_x - radius, noon_y))
-            draw.polygon(points, fill=color)
-    
-    # Draw rectangles with linear gradients matching the radial transitions
-    rect_left = noon_x - twilight_radius - twilight_night_blend / 2
-    rect_right = noon_x + twilight_radius + twilight_night_blend / 2
-    
-    # Draw vertical strips for horizontal gradient
-    num_strips = 200
-    for i in range(num_strips):
-        x_start = rect_left + (rect_right - rect_left) * i / num_strips
-        x_end = rect_left + (rect_right - rect_left) * (i + 1) / num_strips
-        
-        # Calculate distance from center
-        x_mid = (x_start + x_end) / 2
-        distance_from_center = abs(x_mid - noon_x)
-        
-        # Determine color based on distance with smooth transitions
-        if distance_from_center <= sun_radius - sun_twilight_blend / 2:
-            # Core sun area
-            color = day_color
-        elif distance_from_center <= sun_radius + sun_twilight_blend / 2:
-            # Sun to twilight transition
-            t = (distance_from_center - (sun_radius - sun_twilight_blend / 2)) / sun_twilight_blend
-            color = int(day_color - (day_color - twilight_color) * t)
-        elif distance_from_center <= twilight_radius - twilight_night_blend / 2:
-            # Core twilight area
-            color = twilight_color
-        elif distance_from_center <= twilight_radius + twilight_night_blend / 2:
-            # Twilight to night transition
-            t = (distance_from_center - (twilight_radius - twilight_night_blend / 2)) / twilight_night_blend
-            color = int(twilight_color - (twilight_color - night_color) * t)
-        else:
-            # Night area
-            color = night_color
-        
-        # Draw vertical strip
+        # Draw vertical strip for entire display height
         draw.rectangle([
-            (x_start, noon_y),
+            (x_start, 0),
             (x_end, img.height)
         ], fill=color)
 

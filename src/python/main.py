@@ -76,8 +76,8 @@ def generate_tide_chart(tide_data, output_path, is_night=None, hours=24, start_t
     else:
         start_date = datetime.datetime.now().date()
     
-    # Fetch sun events for 2 days to cover 36-hour window
-    sun_events_list = get_sun_events_for_range(start_date, days=2)
+    # Fetch sun events for 3 days (including previous day) to cover transitions properly
+    sun_events_list = get_sun_events_for_range(start_date - datetime.timedelta(days=1), days=3)
     sun_events = convert_sun_events_to_hours_since_start(sun_events_list, start_time)
     
     # Draw sun background first (bottom layer)

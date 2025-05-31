@@ -138,8 +138,8 @@ def convert_sun_events_to_hours_since_start(sun_events_list, start_datetime):
                 time_diff = event_datetime - start_datetime
                 hours_since_start = time_diff.total_seconds() / 3600
                 
-                # Only include events within reasonable range (0 to 48 hours)
-                if 0 <= hours_since_start <= 48:
+                # Include events from -24 to 48 hours to capture previous day's events
+                if -24 <= hours_since_start <= 48:
                     converted_events.append({
                         'type': event_type,
                         'hours_since_start': hours_since_start,
