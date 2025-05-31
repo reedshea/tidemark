@@ -5,12 +5,12 @@ import os
 import datetime
 import math
 
-from render.sky import load_font, SKY_HEIGHT, GRAPH_MARGIN_LEFT, GRAPH_MARGIN_RIGHT, GRAPH_MARGIN_BOTTOM, GRAPH_MARGIN_TOP
+from render.sky import load_font, GRAPH_MARGIN_LEFT, GRAPH_MARGIN_RIGHT, GRAPH_MARGIN_BOTTOM, GRAPH_MARGIN_TOP
 
 def draw_graph_axes(draw, width, height, tide_min, tide_max):
     """Draw the graph axes and labels"""
     # Calculate graph area dimensions
-    graph_top = SKY_HEIGHT + GRAPH_MARGIN_TOP
+    graph_top = GRAPH_MARGIN_TOP
     graph_bottom = height - GRAPH_MARGIN_BOTTOM
     graph_left = GRAPH_MARGIN_LEFT
     graph_right = width - GRAPH_MARGIN_RIGHT
@@ -39,9 +39,7 @@ def draw_graph_axes(draw, width, height, tide_min, tide_max):
         height = tide_min_rounded + (i * 0.5)
         y_pos = graph_bottom - ((height - tide_min_rounded) / tide_range) * graph_height
         
-        # Grid line (dashed)
-        for x in range(graph_left, graph_right, 10):
-            draw.line([(x, y_pos), (x+5, y_pos)], fill=0, width=1)
+        # Removed grid lines
         
         # Label
         height_label = f"{height:.1f}m"
@@ -65,10 +63,7 @@ def draw_graph_axes(draw, width, height, tide_min, tide_max):
         label_width = len(time_label) * 8  # Approximate width
         draw.text((x_pos - label_width/2, graph_bottom + 10), time_label, fill=0, font=time_font)
         
-        # Vertical grid line (dashed)
-        if hour > 0 and hour < 24:
-            for y in range(graph_top, graph_bottom, 10):
-                draw.line([(x_pos, y), (x_pos, y+5)], fill=0, width=1)
+        # Removed vertical grid lines
     
     return graph_top, graph_bottom, graph_left, graph_right, graph_height, tide_min_rounded, tide_max_rounded
 
@@ -331,6 +326,147 @@ def plot_tide_data(draw, width, height, tide_data, graph_params):
         ], fill=255)
         
         draw.text((x_pos - text_width/2 + 5, label_y), label, fill=0, font=font)
+
+def draw_sun_background(img, draw, sun_data, graph_params, mean_tide_level):
+    """Draw sun arc with gradient background representing day/night"""
+    graph_top, graph_bottom, graph_left, graph_right, graph_height, tide_min, tide_max = graph_params
+    graph_width = graph_right - graph_left
+    
+    if not sun_data:
+        return
+    
+    # Get sun event times
+    nautical_dawn_time = sun_data['nautical_dawn']['hour'] + sun_data['nautical_dawn']['minute'] / 60.0
+    sunrise_time = sun_data['sunrise']['hour'] + sun_data['sunrise']['minute'] / 60.0
+    sunset_time = sun_data['sunset']['hour'] + sun_data['sunset']['minute'] / 60.0
+    nautical_dusk_time = sun_data['nautical_dusk']['hour'] + sun_data['nautical_dusk']['minute'] / 60.0
+    
+    # Calculate x positions
+    sunrise_x = graph_left + (sunrise_time / 24) * graph_width
+    sunset_x = graph_left + (sunset_time / 24) * graph_width
+    dawn_x = graph_left + (nautical_dawn_time / 24) * graph_width
+    dusk_x = graph_left + (nautical_dusk_time / 24) * graph_width
+    
+    # Calculate y position for the horizon (mean tide level)
+    horizon_y = graph_bottom - ((mean_tide_level - tide_min) / (tide_max - tide_min)) * graph_height
+    
+    # Create a gradient mask for the sun's glow
+    # We'll draw multiple ellipses with decreasing opacity
+    sun_arc_center_x = (sunrise_x + sunset_x) / 2
+    sun_arc_width = sunset_x - sunrise_x
+    sun_arc_radius = sun_arc_width / 2
+    
+    # Height should be similar to moon arc - 80% of available space
+    available_height = horizon_y - graph_top
+    sun_arc_height = available_height * 0.8
+    
+    # Draw background with distinct zones (no gradient)
+    # Night is 40% grey (60% brightness = 153)
+    night_color = 153  # 40% grey = 60% brightness
+    twilight_color = 204  # 20% grey = 80% brightness
+    day_color = 255  # White
+    draw.rectangle([(0, 0), (img.width, img.height)], fill=night_color)
+    
+    # Simple approach: Draw circular gradient at noon position
+    # Calculate noon position (middle of sunrise and sunset)
+    noon_x = (sunrise_x + sunset_x) / 2
+    noon_y = img.height * 0.6  # Center at 40% from bottom (60% from top)
+    
+    # Calculate the radius needed for sunrise/sunset to intersect at horizon
+    # Distance from noon to sunrise/sunset horizontally
+    sun_arc_half_width = (sunset_x - sunrise_x) / 2
+    # Distance from center of display to horizon vertically
+    center_to_horizon = abs(noon_y - horizon_y)
+    # Calculate radius using Pythagorean theorem
+    sun_radius = math.sqrt(sun_arc_half_width**2 + center_to_horizon**2)
+    
+    # Calculate nautical twilight radius
+    # Distance from noon to nautical dawn/dusk
+    twilight_arc_half_width = (dusk_x - dawn_x) / 2
+    twilight_radius = math.sqrt(twilight_arc_half_width**2 + center_to_horizon**2)
+    
+    # Define transition widths (in pixels)
+    sun_twilight_blend = 50  # Blend width between sun and twilight
+    twilight_night_blend = 80  # Blend width between twilight and night
+    
+    # Draw concentric semicircles with gradients at transitions
+    num_layers = 60
+    max_radius = twilight_radius + twilight_night_blend / 2
+    
+    for i in range(num_layers, 0, -1):
+        radius = (i / num_layers) * max_radius
+        
+        # Determine color based on radius with smooth transitions
+        if radius <= sun_radius - sun_twilight_blend / 2:
+            # Core sun area
+            color = day_color
+        elif radius <= sun_radius + sun_twilight_blend / 2:
+            # Sun to twilight transition
+            t = (radius - (sun_radius - sun_twilight_blend / 2)) / sun_twilight_blend
+            color = int(day_color - (day_color - twilight_color) * t)
+        elif radius <= twilight_radius - twilight_night_blend / 2:
+            # Core twilight area
+            color = twilight_color
+        elif radius <= twilight_radius + twilight_night_blend / 2:
+            # Twilight to night transition
+            t = (radius - (twilight_radius - twilight_night_blend / 2)) / twilight_night_blend
+            color = int(twilight_color - (twilight_color - night_color) * t)
+        else:
+            # Night area
+            color = night_color
+        
+        # Draw semicircle for this layer
+        points = []
+        for j in range(101):
+            angle = math.pi * j / 100  # 0 to pi for semicircle
+            x = noon_x + radius * math.cos(angle + math.pi)
+            y = noon_y + radius * math.sin(angle + math.pi)
+            if y <= noon_y:
+                points.append((x, y))
+        
+        if points:
+            points.append((noon_x + radius, noon_y))
+            points.append((noon_x - radius, noon_y))
+            draw.polygon(points, fill=color)
+    
+    # Draw rectangles with linear gradients matching the radial transitions
+    rect_left = noon_x - twilight_radius - twilight_night_blend / 2
+    rect_right = noon_x + twilight_radius + twilight_night_blend / 2
+    
+    # Draw vertical strips for horizontal gradient
+    num_strips = 200
+    for i in range(num_strips):
+        x_start = rect_left + (rect_right - rect_left) * i / num_strips
+        x_end = rect_left + (rect_right - rect_left) * (i + 1) / num_strips
+        
+        # Calculate distance from center
+        x_mid = (x_start + x_end) / 2
+        distance_from_center = abs(x_mid - noon_x)
+        
+        # Determine color based on distance with smooth transitions
+        if distance_from_center <= sun_radius - sun_twilight_blend / 2:
+            # Core sun area
+            color = day_color
+        elif distance_from_center <= sun_radius + sun_twilight_blend / 2:
+            # Sun to twilight transition
+            t = (distance_from_center - (sun_radius - sun_twilight_blend / 2)) / sun_twilight_blend
+            color = int(day_color - (day_color - twilight_color) * t)
+        elif distance_from_center <= twilight_radius - twilight_night_blend / 2:
+            # Core twilight area
+            color = twilight_color
+        elif distance_from_center <= twilight_radius + twilight_night_blend / 2:
+            # Twilight to night transition
+            t = (distance_from_center - (twilight_radius - twilight_night_blend / 2)) / twilight_night_blend
+            color = int(twilight_color - (twilight_color - night_color) * t)
+        else:
+            # Night area
+            color = night_color
+        
+        # Draw vertical strip
+        draw.rectangle([
+            (x_start, noon_y),
+            (x_end, img.height)
+        ], fill=color)
 
 def draw_moon_arc(draw, moon_data, graph_params, mean_tide_level):
     """Draw moon path arc from moonrise to moonset"""
