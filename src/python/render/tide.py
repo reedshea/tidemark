@@ -20,8 +20,8 @@ def draw_graph_axes(draw, width, height, tide_min, tide_max):
     draw.line([(graph_left, graph_top), (graph_left, graph_bottom)], fill=0, width=2)  # Y-axis
     draw.line([(graph_left, graph_bottom), (graph_right, graph_bottom)], fill=0, width=2)  # X-axis
     
-    # Add height labels
-    font = load_font(20)
+    # Add height labels with white background
+    font = load_font(28)  # Larger font
     # Round to nearest 0.5m for better labels
     tide_min_rounded = np.floor(tide_min * 2) / 2
     tide_max_rounded = np.ceil(tide_max * 2) / 2
@@ -41,12 +41,29 @@ def draw_graph_axes(draw, width, height, tide_min, tide_max):
         
         # Removed grid lines
         
-        # Label
+        # Label with white background
         height_label = f"{height:.1f}m"
-        draw.text((graph_left - 70, y_pos - 10), height_label, fill=0, font=font)
+        label_width = 80
+        label_height = 30
+        label_x = graph_left - 90
+        label_y = y_pos - 15
+        
+        # Draw white background box
+        draw.rectangle([
+            (label_x, label_y),
+            (label_x + label_width, label_y + label_height)
+        ], fill=255, outline=0)
+        
+        # Draw text
+        draw.text((label_x + 10, label_y + 3), height_label, fill=0, font=font)
         
         # Tick mark
         draw.line([(graph_left - 5, y_pos), (graph_left, y_pos)], fill=0, width=2)
+    
+    # Draw horizontal line at zero tide level
+    if tide_min_rounded <= 0 <= tide_max_rounded:
+        zero_y = graph_bottom - ((0 - tide_min_rounded) / tide_range) * graph_height
+        draw.line([(graph_left, zero_y), (graph_right, zero_y)], fill=0, width=2)
     
     # Add time labels (every 3 hours)
     time_font = load_font(20)

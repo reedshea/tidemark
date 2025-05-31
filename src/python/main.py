@@ -15,8 +15,9 @@ from PIL import Image, ImageDraw, ImageFont
 from data.tide_api import get_tide_data, GREAT_HILL_CONSTITUENTS
 from data.moon_data import get_moon_events
 from data.sun_data import get_sun_events
-from render.sky import WIDTH, HEIGHT
+from render.sky import WIDTH, HEIGHT, GRAPH_MARGIN_TOP, GRAPH_MARGIN_BOTTOM, GRAPH_MARGIN_LEFT, GRAPH_MARGIN_RIGHT
 from render.tide import draw_graph_axes, plot_tide_data, apply_wave_background, draw_moon_arc, draw_sun_background
+import numpy as np
 
 def add_footer(draw, width, height):
     """Add footer text with generation time"""
@@ -51,8 +52,21 @@ def generate_tide_chart(tide_data, output_path, is_night=None):
     # Get mean tide level from constituents
     mean_tide_level = GREAT_HILL_CONSTITUENTS['mean_tide_level']
     
-    # Draw graph axes and get graph parameters
-    graph_params = draw_graph_axes(draw, WIDTH, HEIGHT, tide_min, tide_max)
+    # Calculate graph parameters first (we'll draw axes later)
+    graph_top = GRAPH_MARGIN_TOP
+    graph_bottom = HEIGHT - GRAPH_MARGIN_BOTTOM
+    graph_left = GRAPH_MARGIN_LEFT
+    graph_right = WIDTH - GRAPH_MARGIN_RIGHT
+    graph_height = graph_bottom - graph_top
+    
+    # Round tide min/max for better labels
+    tide_min_rounded = np.floor(tide_min * 2) / 2
+    tide_max_rounded = np.ceil(tide_max * 2) / 2
+    if tide_max_rounded - tide_min_rounded < 0.5:
+        tide_min_rounded = 0
+        tide_max_rounded = 4
+    
+    graph_params = (graph_top, graph_bottom, graph_left, graph_right, graph_height, tide_min_rounded, tide_max_rounded)
     
     # Get sun data and draw sun background first (bottom layer)
     sun_data = get_sun_events()
@@ -114,6 +128,9 @@ def generate_tide_chart(tide_data, output_path, is_night=None):
             ], fill=255)
             
             draw.text((x_pos - text_width/2 + 5, label_y), label, fill=0, font=font)
+    
+    # Draw graph axes and labels on top of everything
+    draw_graph_axes(draw, WIDTH, HEIGHT, tide_min, tide_max)
     
     # Add footer
     add_footer(draw, WIDTH, HEIGHT)
