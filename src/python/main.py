@@ -13,8 +13,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 # Import local modules
 from data.tide_api import get_tide_data, GREAT_HILL_CONSTITUENTS
-from data.moon_data import get_moon_events
-from data.sun_data import get_sun_events
+from data.moon_data import get_moon_events, get_moon_events_for_range, convert_moon_events_to_hours_since_start
+from data.sun_data import get_sun_events, get_sun_events_for_range, convert_sun_events_to_hours_since_start
 from render.sky import WIDTH, HEIGHT, GRAPH_MARGIN_TOP, GRAPH_MARGIN_BOTTOM, GRAPH_MARGIN_LEFT, GRAPH_MARGIN_RIGHT
 from render.tide import draw_graph_axes, plot_tide_data, apply_wave_background, draw_moon_arc, draw_sun_background
 import numpy as np
@@ -70,15 +70,25 @@ def generate_tide_chart(tide_data, output_path, is_night=None, hours=24, start_t
     
     graph_params = (graph_top, graph_bottom, graph_left, graph_right, graph_height, tide_min_rounded, tide_max_rounded)
     
-    # Get sun data and draw sun background first (bottom layer)
-    sun_data = get_sun_events()
-    draw_sun_background(img, draw, sun_data, graph_params, mean_tide_level, hours, start_time)
+    # Get sun data for multiple days and convert to hours since start
+    if start_time:
+        start_date = start_time.date()
+    else:
+        start_date = datetime.datetime.now().date()
     
-    # Get moon data for today
-    moon_data = get_moon_events()
+    # Fetch sun events for 2 days to cover 36-hour window
+    sun_events_list = get_sun_events_for_range(start_date, days=2)
+    sun_events = convert_sun_events_to_hours_since_start(sun_events_list, start_time)
+    
+    # Draw sun background first (bottom layer)
+    draw_sun_background(img, draw, sun_events, graph_params, mean_tide_level, hours, start_time)
+    
+    # Get moon data for multiple days and convert to hours since start
+    moon_events_list = get_moon_events_for_range(start_date, days=2)
+    moon_events = convert_moon_events_to_hours_since_start(moon_events_list, start_time)
     
     # Draw moon arc on top of sun background
-    draw_moon_arc(draw, moon_data, graph_params, mean_tide_level, hours, start_time)
+    draw_moon_arc(draw, moon_events, graph_params, mean_tide_level, hours, start_time)
     
     # Plot tide data and get curve points
     curve_points = plot_tide_data(draw, WIDTH, HEIGHT, tide_data, graph_params, hours)

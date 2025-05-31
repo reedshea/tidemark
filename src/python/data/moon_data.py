@@ -176,6 +176,99 @@ def get_moon_illumination(phase):
     # 0.5 phase = full moon (100% illuminated)
     return (1 - math.cos(2 * math.pi * phase)) / 2
 
+def get_moon_events_for_range(start_date, days=2):
+    """
+    Get moon rise/set times and phase for multiple days
+    
+    Parameters:
+    - start_date: Starting date
+    - days: Number of days to fetch (default: 2)
+    
+    Returns:
+    - List of dictionaries, each containing:
+      - date: The date for this set of events
+      - moonrise, moonset: Time dictionaries
+      - phase: Moon phase value
+    """
+    events = []
+    for i in range(days):
+        date = start_date + datetime.timedelta(days=i)
+        day_events = get_moon_events(date)
+        day_events['date'] = date
+        events.append(day_events)
+    return events
+
+def convert_moon_events_to_hours_since_start(moon_events_list, start_datetime):
+    """
+    Convert moon events to hours since a start datetime
+    
+    Parameters:
+    - moon_events_list: List of moon events from get_moon_events_for_range
+    - start_datetime: Reference datetime to calculate hours from
+    
+    Returns:
+    - List of events with hours_since_start added
+    """
+    converted_events = []
+    
+    for day_events in moon_events_list:
+        date = day_events['date']
+        
+        # Process moonrise
+        if 'moonrise' in day_events and day_events['moonrise']:
+            moonrise_time = day_events['moonrise']
+            moonrise_datetime = datetime.datetime.combine(
+                date,
+                datetime.time(moonrise_time['hour'], moonrise_time['minute'])
+            )
+            
+            time_diff = moonrise_datetime - start_datetime
+            hours_since_start = time_diff.total_seconds() / 3600
+            
+            if 0 <= hours_since_start <= 48:
+                converted_events.append({
+                    'type': 'moonrise',
+                    'hours_since_start': hours_since_start,
+                    'datetime': moonrise_datetime,
+                    'hour': moonrise_time['hour'],
+                    'minute': moonrise_time['minute'],
+                    'phase': day_events['phase']
+                })
+        
+        # Process moonset
+        if 'moonset' in day_events and day_events['moonset']:
+            moonset_time = day_events['moonset']
+            moonset_datetime = datetime.datetime.combine(
+                date,
+                datetime.time(moonset_time['hour'], moonset_time['minute'])
+            )
+            
+            # If moonset is early morning (before 6 AM), it might be from previous day's rise
+            if moonset_time['hour'] < 6 and 'moonrise' in day_events and day_events['moonrise']:
+                if moonset_time['hour'] < day_events['moonrise']['hour']:
+                    # This moonset is from previous day's moonrise, skip if it's before our start
+                    time_diff = moonset_datetime - start_datetime
+                    hours_since_start = time_diff.total_seconds() / 3600
+                    if hours_since_start < 0:
+                        continue
+            
+            time_diff = moonset_datetime - start_datetime
+            hours_since_start = time_diff.total_seconds() / 3600
+            
+            if 0 <= hours_since_start <= 48:
+                converted_events.append({
+                    'type': 'moonset',
+                    'hours_since_start': hours_since_start,
+                    'datetime': moonset_datetime,
+                    'hour': moonset_time['hour'],
+                    'minute': moonset_time['minute'],
+                    'phase': day_events['phase']
+                })
+    
+    # Sort by hours_since_start
+    converted_events.sort(key=lambda x: x['hours_since_start'])
+    return converted_events
+
 if __name__ == "__main__":
     # Test the module
     data = get_moon_events()
@@ -190,3 +283,15 @@ if __name__ == "__main__":
         print("Moonset: Not today")
     print(f"Phase: {phase_name} ({data['phase']:.2f})")
     print(f"Illumination: {illumination:.1%}")
+    
+    # Test multi-day fetch
+    print("\nMulti-day moon events:")
+    start_date = datetime.datetime.now().date()
+    events = get_moon_events_for_range(start_date, days=2)
+    for day_events in events:
+        print(f"\nDate: {day_events['date']}")
+        if day_events['moonrise']:
+            print(f"  Moonrise: {day_events['moonrise']['hour']:02d}:{day_events['moonrise']['minute']:02d}")
+        if day_events['moonset']:
+            print(f"  Moonset: {day_events['moonset']['hour']:02d}:{day_events['moonset']['minute']:02d}")
+        print(f"  Phase: {day_events['phase']:.2f}")

@@ -401,13 +401,13 @@ def plot_tide_data(draw, width, height, tide_data, graph_params, hours=24):
         
         draw.text((x_pos - text_width/2 + 5, label_y), label, fill=0, font=font)
 
-def draw_sun_background(img, draw, sun_data, graph_params, mean_tide_level, hours=24, start_time=None):
+def draw_sun_background(img, draw, sun_events, graph_params, mean_tide_level, hours=24, start_time=None):
     """Draw sun arc with gradient background representing day/night
     
     Parameters:
     - img: PIL Image object
     - draw: PIL ImageDraw object
-    - sun_data: Dictionary with sun event times
+    - sun_events: List of sun events with hours_since_start
     - graph_params: Tuple of graph parameters
     - mean_tide_level: Mean tide level for horizon
     - hours: Number of hours displayed
@@ -416,81 +416,84 @@ def draw_sun_background(img, draw, sun_data, graph_params, mean_tide_level, hour
     graph_top, graph_bottom, graph_left, graph_right, graph_height, tide_min, tide_max = graph_params
     graph_width = graph_right - graph_left
     
-    if not sun_data or not start_time:
+    if not sun_events or not start_time:
         return
     
-    # Get sun event times
-    nautical_dawn_time = sun_data['nautical_dawn']['hour'] + sun_data['nautical_dawn']['minute'] / 60.0
-    sunrise_time = sun_data['sunrise']['hour'] + sun_data['sunrise']['minute'] / 60.0
-    sunset_time = sun_data['sunset']['hour'] + sun_data['sunset']['minute'] / 60.0
-    nautical_dusk_time = sun_data['nautical_dusk']['hour'] + sun_data['nautical_dusk']['minute'] / 60.0
+    # Extract sun events within our display window
+    dawn_events = [e for e in sun_events if e['type'] == 'nautical_dawn' and 0 <= e['hours_since_start'] <= hours]
+    sunrise_events = [e for e in sun_events if e['type'] == 'sunrise' and 0 <= e['hours_since_start'] <= hours]
+    sunset_events = [e for e in sun_events if e['type'] == 'sunset' and 0 <= e['hours_since_start'] <= hours]
+    dusk_events = [e for e in sun_events if e['type'] == 'nautical_dusk' and 0 <= e['hours_since_start'] <= hours]
     
-    # Convert to hours since start_time
-    start_hour = start_time.hour + start_time.minute / 60.0
-    
-    # Calculate x positions - handle events that may be on different days
-    def time_to_x(event_hour):
-        # Calculate hours since start
-        hours_since_start = event_hour - start_hour
-        if hours_since_start < 0:
-            hours_since_start += 24  # Next day
-        if hours_since_start > hours:
-            return None  # Outside display range
+    # Convert hours_since_start to x positions
+    def hours_to_x(hours_since_start):
         return graph_left + (hours_since_start / hours) * graph_width
-    
-    sunrise_x = time_to_x(sunrise_time)
-    sunset_x = time_to_x(sunset_time)
-    dawn_x = time_to_x(nautical_dawn_time)
-    dusk_x = time_to_x(nautical_dusk_time)
     
     # Calculate y position for the horizon (mean tide level)
     horizon_y = graph_bottom - ((mean_tide_level - tide_min) / (tide_max - tide_min)) * graph_height
     
-    # Create a gradient mask for the sun's glow
-    # We'll draw multiple ellipses with decreasing opacity
-    sun_arc_center_x = (sunrise_x + sunset_x) / 2
-    sun_arc_width = sunset_x - sunrise_x
-    sun_arc_radius = sun_arc_width / 2
-    
-    # Height should be similar to moon arc - 80% of available space
-    available_height = horizon_y - graph_top
-    sun_arc_height = available_height * 0.8
-    
-    # Draw background with distinct zones (no gradient)
-    # Night is 40% grey (60% brightness = 153)
-    night_color = 224  # 
-    twilight_color = 240  # 
+    # Draw background with distinct zones
+    night_color = 224
+    twilight_color = 240
     day_color = 255  # White
     draw.rectangle([(0, 0), (img.width, img.height)], fill=night_color)
     
-    # Simple approach: Draw circular gradient at noon position
-    # Calculate noon position (middle of sunrise and sunset)
-    if sunrise_x and sunset_x:
-        noon_x = (sunrise_x + sunset_x) / 2
-    else:
-        # If sunrise or sunset is not visible, estimate based on available data
-        noon_x = graph_left + graph_width / 2
-    noon_y = img.height * 0.6  # Center at 40% from bottom (60% from top)
-    
-    # Calculate the radius needed for sunrise/sunset to intersect at horizon
-    # Distance from noon to sunrise/sunset horizontally
-    if sunrise_x and sunset_x:
-        sun_arc_half_width = abs(sunset_x - sunrise_x) / 2
-    else:
-        sun_arc_half_width = graph_width / 3  # Default estimate
-    
-    # Distance from center of display to horizon vertically
-    center_to_horizon = abs(noon_y - horizon_y)
-    # Calculate radius using Pythagorean theorem
-    sun_radius = math.sqrt(sun_arc_half_width**2 + center_to_horizon**2)
-    
-    # Calculate nautical twilight radius
-    # Distance from noon to nautical dawn/dusk
-    if dawn_x and dusk_x:
-        twilight_arc_half_width = abs(dusk_x - dawn_x) / 2
-    else:
-        twilight_arc_half_width = graph_width / 2  # Default estimate
-    twilight_radius = math.sqrt(twilight_arc_half_width**2 + center_to_horizon**2)
+    # Process each day's sun events
+    for i in range(len(sunrise_events)):
+        # Try to find matching sunset for this sunrise
+        sunrise_x = hours_to_x(sunrise_events[i]['hours_since_start'])
+        
+        # Find the sunset that follows this sunrise
+        sunset_x = None
+        for sunset_event in sunset_events:
+            if sunset_event['hours_since_start'] > sunrise_events[i]['hours_since_start']:
+                sunset_x = hours_to_x(sunset_event['hours_since_start'])
+                break
+        
+        # If no sunset found, it might be after our window
+        if sunset_x is None and i < len(sunset_events):
+            # Use the next available sunset
+            sunset_x = hours_to_x(sunset_events[i]['hours_since_start'])
+        
+        # Find corresponding dawn and dusk
+        dawn_x = None
+        for dawn_event in dawn_events:
+            if dawn_event['hours_since_start'] < sunrise_events[i]['hours_since_start']:
+                dawn_x = hours_to_x(dawn_event['hours_since_start'])
+        
+        dusk_x = None
+        if sunset_x is not None:
+            for dusk_event in dusk_events:
+                if sunset_events and dusk_event['hours_since_start'] > sunset_events[0]['hours_since_start']:
+                    dusk_x = hours_to_x(dusk_event['hours_since_start'])
+                    break
+        
+        # Calculate noon position for this day
+        if sunrise_x is not None and sunset_x is not None:
+            noon_x = (sunrise_x + sunset_x) / 2
+        elif sunrise_x is not None:
+            # Estimate based on typical day length
+            noon_x = sunrise_x + (7 * graph_width / hours)  # 7 hours after sunrise
+        else:
+            continue  # Skip if we don't have enough data
+        
+        noon_y = img.height * 0.6
+        
+        # Calculate radii
+        if sunrise_x is not None and sunset_x is not None:
+            sun_arc_half_width = abs(sunset_x - sunrise_x) / 2
+        else:
+            sun_arc_half_width = graph_width / 3
+        
+        center_to_horizon = abs(noon_y - horizon_y)
+        sun_radius = math.sqrt(sun_arc_half_width**2 + center_to_horizon**2)
+        
+        # Calculate twilight radius
+        if dawn_x is not None and dusk_x is not None:
+            twilight_arc_half_width = abs(dusk_x - dawn_x) / 2
+        else:
+            twilight_arc_half_width = sun_arc_half_width * 1.5
+        twilight_radius = math.sqrt(twilight_arc_half_width**2 + center_to_horizon**2)
     
     # Define transition widths (in pixels)
     sun_twilight_blend = 50  # Blend width between sun and twilight
@@ -575,12 +578,12 @@ def draw_sun_background(img, draw, sun_data, graph_params, mean_tide_level, hour
             (x_end, img.height)
         ], fill=color)
 
-def draw_moon_arc(draw, moon_data, graph_params, mean_tide_level, hours=24, start_time=None):
+def draw_moon_arc(draw, moon_events, graph_params, mean_tide_level, hours=24, start_time=None):
     """Draw moon path arc from moonrise to moonset
     
     Parameters:
     - draw: PIL ImageDraw object
-    - moon_data: Dictionary with moon event times
+    - moon_events: List of moon events with hours_since_start
     - graph_params: Tuple of graph parameters
     - mean_tide_level: Mean tide level for horizon
     - hours: Number of hours displayed
@@ -589,72 +592,105 @@ def draw_moon_arc(draw, moon_data, graph_params, mean_tide_level, hours=24, star
     graph_top, graph_bottom, graph_left, graph_right, graph_height, tide_min, tide_max = graph_params
     graph_width = graph_right - graph_left
     
-    if not moon_data or not moon_data.get('moonrise') or not moon_data.get('moonset') or not start_time:
+    if not moon_events or not start_time:
         return
     
-    # Calculate x positions for moonrise and moonset
-    moonrise_time = moon_data['moonrise']['hour'] + moon_data['moonrise']['minute'] / 60.0
-    moonset_time = moon_data['moonset']['hour'] + moon_data['moonset']['minute'] / 60.0
+    # Extract moonrise and moonset events within our display window
+    moonrise_events = [e for e in moon_events if e['type'] == 'moonrise' and 0 <= e['hours_since_start'] <= hours]
+    moonset_events = [e for e in moon_events if e['type'] == 'moonset' and 0 <= e['hours_since_start'] <= hours]
     
-    # Convert to hours since start_time
-    start_hour = start_time.hour + start_time.minute / 60.0
-    
-    # Calculate hours since start for moonrise and moonset
-    moonrise_hours = moonrise_time - start_hour
-    if moonrise_hours < 0:
-        moonrise_hours += 24
-    
-    moonset_hours = moonset_time - start_hour
-    if moonset_hours < 0:
-        moonset_hours += 24
-    
-    # Handle case where moonset is before moonrise in our time window
-    if moonset_hours < moonrise_hours:
-        # If moonset is early in our window, it's from previous day's rise
-        if moonset_hours < 6:  # Within first 6 hours
-            # Don't draw this arc as the moonrise was before our start time
-            return
-        # Otherwise moonset is after our window
-        if moonrise_hours > hours:
-            return  # Both events outside our window
-    
-    # Only draw if both events are within our display window
-    if moonrise_hours > hours or moonset_hours > hours:
+    if not moonrise_events and not moonset_events:
         return
     
-    moonrise_x = graph_left + (moonrise_hours / hours) * graph_width
-    moonset_x = graph_left + (moonset_hours / hours) * graph_width
+    # Convert hours_since_start to x positions
+    def hours_to_x(hours_since_start):
+        return graph_left + (hours_since_start / hours) * graph_width
+    
+    # Pair up moonrise and moonset events
+    moon_arcs = []
+    
+    # Process each moonrise
+    for moonrise in moonrise_events:
+        moonrise_x = hours_to_x(moonrise['hours_since_start'])
+        moonrise_hours = moonrise['hours_since_start']
+        phase = moonrise['phase']
+        
+        # Find the corresponding moonset (next moonset after this moonrise)
+        moonset_x = None
+        moonset_hours = None
+        for moonset in moonset_events:
+            if moonset['hours_since_start'] > moonrise_hours:
+                moonset_x = hours_to_x(moonset['hours_since_start'])
+                moonset_hours = moonset['hours_since_start']
+                break
+        
+        # If we have both rise and set, add to arcs
+        if moonset_x is not None:
+            moon_arcs.append({
+                'moonrise_x': moonrise_x,
+                'moonset_x': moonset_x,
+                'moonrise_hours': moonrise_hours,
+                'moonset_hours': moonset_hours,
+                'phase': phase
+            })
+    
+    # Also check for moonsets that might be from a moonrise before our window
+    for moonset in moonset_events:
+        moonset_hours = moonset['hours_since_start']
+        # Check if this moonset has no corresponding moonrise in our list
+        has_rise = False
+        for arc in moon_arcs:
+            if abs(arc['moonset_hours'] - moonset_hours) < 0.1:  # Same moonset
+                has_rise = True
+                break
+        
+        if not has_rise and moonset_hours < 12:  # Early moonset, likely from previous day
+            # Create a partial arc starting from the left edge
+            moon_arcs.append({
+                'moonrise_x': graph_left,
+                'moonset_x': hours_to_x(moonset_hours),
+                'moonrise_hours': 0,
+                'moonset_hours': moonset_hours,
+                'phase': moonset['phase']
+            })
     
     # Calculate y position for the horizon (mean tide level)
     horizon_y = graph_bottom - ((mean_tide_level - tide_min) / (tide_max - tide_min)) * graph_height
     
-    # Arc parameters
-    arc_width = moonset_x - moonrise_x
-    arc_center_x = (moonrise_x + moonset_x) / 2
-    
     # Height should be 80% of the available space above horizon
     available_height = horizon_y - graph_top
     arc_height = available_height * 0.8
-    arc_radius = arc_width / 2
     
-    # Draw dotted arc
-    num_dots = 64
-    for i in range(num_dots + 1):
-        # Calculate angle from 0 to pi (semicircle)
-        angle = math.pi * i / num_dots
+    # Draw each moon arc
+    for arc_data in moon_arcs:
+        moonrise_x = arc_data['moonrise_x']
+        moonset_x = arc_data['moonset_x']
+        phase = arc_data['phase']
         
-        # Calculate position
-        x = arc_center_x - arc_radius * math.cos(angle)
-        y = horizon_y - arc_height * math.sin(angle)
+        # Arc parameters
+        arc_width = moonset_x - moonrise_x
+        arc_center_x = (moonrise_x + moonset_x) / 2
+        arc_radius = arc_width / 2
         
-        # Draw small circle for dotted effect
-        # if i % 2 == 0:  # Draw every other dot
-        draw.ellipse([(x-2, y-2), (x+2, y+2)], fill=0)
-    
-    # Draw moon phase at the top of the arc
-    moon_x = arc_center_x
-    moon_y = horizon_y - arc_height
-    draw_moon_phase(draw, moon_x, moon_y, moon_data.get('phase', 0.5))
+        # Draw dotted arc
+        num_dots = int(arc_width / 5)  # Adjust density based on arc width
+        num_dots = max(20, min(num_dots, 100))  # Clamp between 20 and 100
+        
+        for i in range(num_dots + 1):
+            # Calculate angle from 0 to pi (semicircle)
+            angle = math.pi * i / num_dots
+            
+            # Calculate position
+            x = arc_center_x - arc_radius * math.cos(angle)
+            y = horizon_y - arc_height * math.sin(angle)
+            
+            # Draw small circle for dotted effect
+            draw.ellipse([(x-2, y-2), (x+2, y+2)], fill=0)
+        
+        # Draw moon phase at the top of the arc
+        moon_x = arc_center_x
+        moon_y = horizon_y - arc_height
+        draw_moon_phase(draw, moon_x, moon_y, phase)
 
 def draw_moon_phase(draw, x, y, phase):
     """Draw moon with current phase at specified position"""

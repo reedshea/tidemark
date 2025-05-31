@@ -87,6 +87,71 @@ def get_sun_events(date=None):
             }
         }
 
+def get_sun_events_for_range(start_date, days=2):
+    """
+    Get sun rise/set times with twilight for multiple days
+    
+    Parameters:
+    - start_date: Starting date
+    - days: Number of days to fetch (default: 2)
+    
+    Returns:
+    - List of dictionaries, each containing:
+      - date: The date for this set of events
+      - nautical_dawn, sunrise, sunset, nautical_dusk: Time dictionaries
+    """
+    events = []
+    for i in range(days):
+        date = start_date + datetime.timedelta(days=i)
+        day_events = get_sun_events(date)
+        day_events['date'] = date
+        events.append(day_events)
+    return events
+
+def convert_sun_events_to_hours_since_start(sun_events_list, start_datetime):
+    """
+    Convert sun events to hours since a start datetime
+    
+    Parameters:
+    - sun_events_list: List of sun events from get_sun_events_for_range
+    - start_datetime: Reference datetime to calculate hours from
+    
+    Returns:
+    - List of events with hours_since_start added
+    """
+    converted_events = []
+    
+    for day_events in sun_events_list:
+        date = day_events['date']
+        
+        # Convert each event to hours since start
+        for event_type in ['nautical_dawn', 'sunrise', 'sunset', 'nautical_dusk']:
+            if event_type in day_events and day_events[event_type]:
+                event_time = day_events[event_type]
+                # Create datetime for this event
+                event_datetime = datetime.datetime.combine(
+                    date,
+                    datetime.time(event_time['hour'], event_time['minute'])
+                )
+                
+                # Calculate hours since start
+                time_diff = event_datetime - start_datetime
+                hours_since_start = time_diff.total_seconds() / 3600
+                
+                # Only include events within reasonable range (0 to 48 hours)
+                if 0 <= hours_since_start <= 48:
+                    converted_events.append({
+                        'type': event_type,
+                        'hours_since_start': hours_since_start,
+                        'datetime': event_datetime,
+                        'hour': event_time['hour'],
+                        'minute': event_time['minute']
+                    })
+    
+    # Sort by hours_since_start
+    converted_events.sort(key=lambda x: x['hours_since_start'])
+    return converted_events
+
 if __name__ == "__main__":
     # Test the module
     data = get_sun_events()
@@ -95,3 +160,12 @@ if __name__ == "__main__":
     print(f"Sunrise: {data['sunrise']['hour']:02d}:{data['sunrise']['minute']:02d}")
     print(f"Sunset: {data['sunset']['hour']:02d}:{data['sunset']['minute']:02d}")
     print(f"Nautical dusk: {data['nautical_dusk']['hour']:02d}:{data['nautical_dusk']['minute']:02d}")
+    
+    # Test multi-day fetch
+    print("\nMulti-day sun events:")
+    start_date = datetime.datetime.now().date()
+    events = get_sun_events_for_range(start_date, days=2)
+    for day_events in events:
+        print(f"\nDate: {day_events['date']}")
+        print(f"  Sunrise: {day_events['sunrise']['hour']:02d}:{day_events['sunrise']['minute']:02d}")
+        print(f"  Sunset: {day_events['sunset']['hour']:02d}:{day_events['sunset']['minute']:02d}")
