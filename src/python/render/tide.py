@@ -221,7 +221,7 @@ def apply_wave_background(img, draw, curve_points, graph_bottom, graph_left, gra
     - start_time: Starting datetime for the display
     """
     # Load wave background image
-    wave_bg_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'wave-background.png')
+    wave_bg_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'background-3.png')
     if not os.path.exists(wave_bg_path):
         return
     
