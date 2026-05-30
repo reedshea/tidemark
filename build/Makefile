@@ -59,10 +59,10 @@ clean:
 run: $(BIN)
 	./$(BIN)
 
-# Generate Python virtual environment
+# Generate Python virtual environment (Pillow is the only runtime dependency)
 venv:
 	cd .. && python3 -m venv venv && \
 	. venv/bin/activate && \
-	pip3 install pillow numpy matplotlib
+	pip3 install pillow
 
 .PHONY: all clean run venv

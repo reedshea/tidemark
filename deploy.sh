@@ -43,13 +43,12 @@ ssh $PI_USER@$PI_HOST "mkdir -p $PI_DIR/src/c/display $PI_DIR/src/python/render 
 # Install dependencies on Pi
 echo -e "${YELLOW}Installing dependencies on Raspberry Pi...${NC}"
 ssh $PI_USER@$PI_HOST "sudo apt-get update && sudo apt-get install -y $PI_DEPENDENCIES"
-ssh $PI_USER@$PI_HOST "pip3 install matplotlib"
 
 # Copy files to Pi
 echo -e "${YELLOW}Copying files to Raspberry Pi...${NC}"
 
 # Copy Python files
-scp src/python/main.py $PI_USER@$PI_HOST:$PI_DIR/src/python/
+scp src/python/main.py src/python/config.py $PI_USER@$PI_HOST:$PI_DIR/src/python/
 scp src/python/render/*.py $PI_USER@$PI_HOST:$PI_DIR/src/python/render/
 scp src/python/data/*.py $PI_USER@$PI_HOST:$PI_DIR/src/python/data/
 
@@ -72,7 +71,7 @@ ssh $PI_USER@$PI_HOST "chmod +x $PI_DIR/src/python/main.py $PI_DIR/src/python/re
 
 # Create Python virtual environment on Pi (if needed)
 echo -e "${YELLOW}Setting up Python virtual environment on Raspberry Pi...${NC}"
-ssh $PI_USER@$PI_HOST "cd $PI_DIR && python3 -m venv venv && . venv/bin/activate && pip3 install pillow numpy matplotlib"
+ssh $PI_USER@$PI_HOST "cd $PI_DIR && python3 -m venv venv && . venv/bin/activate && pip3 install pillow"
 
 # Create systemd service file
 echo -e "${YELLOW}Setting up systemd service...${NC}"
