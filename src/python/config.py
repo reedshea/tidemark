@@ -33,7 +33,7 @@ HEIGHT_UNITS = "ft"
 # Adds an air-temperature line and a cloud-cover strip from the US National
 # Weather Service. Strictly additive: with no cache and no network, the display
 # simply omits weather and everything else still works fully offline.
-WEATHER_ENABLED = True
+WEATHER_ENABLED = False           # off for now; temperature renders at bottom
 WEATHER_ALLOW_NETWORK = True      # refresh from NWS when the cache is stale
 WEATHER_MAX_AGE_HOURS = 3         # treat a cached forecast as fresh this long
 WEATHER_CONTACT = "reed@reedshea.com"   # NWS asks for a contact in the request

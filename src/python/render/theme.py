@@ -23,29 +23,30 @@ FAINT = 226       # night band fill
 TWILIGHT = 246    # twilight band fill
 NIGHT_WASH = 246  # barely-there night shading inside the plot
 
-# Plot geometry. The canvas splits into a sky panel (celestial arcs, above the
-# horizon) and the tide/sea panel (below it).
+# Plot geometry. Time axis runs along the TOP (minimal); the tide is the hero
+# below it; the moon rides in a thin strip near the top; day/night band and the
+# optional temperature line sit at the bottom.
 PLOT_LEFT = 124
-PLOT_RIGHT = WIDTH - 70
-SKY_TOP = 188             # top of the sky panel
-HORIZON_Y = 436           # the horizon: arcs rise from here, sea sits below
-ALT_SCALE = 72.0          # altitude (deg) mapped to the full sky-panel height
-PLOT_TOP = 492            # top of the tide panel
-PLOT_BOTTOM = 1112
+PLOT_RIGHT = WIDTH - 60
 
-# Weather sub-regions inside the sky panel (used only when weather is present).
-# Top to bottom: temperature line, then moon arc, then a cloud strip riding
-# just above the horizon.
-WX_TEMP_TOP = 168
-WX_TEMP_BOT = 250
-WX_MOON_TOP = 272         # moon arc top when weather is shown (else SKY_TOP)
-WX_CLOUD_TOP = 408
-WX_CLOUD_H = 24
+TOP_RULE_Y = 112          # rule under the title
+TIME_LABEL_Y = 140        # baseline of the top time-axis labels
+TICK_Y = 152              # short downward ticks under the time labels
 
-BAND_TOP = 1130           # daylight band
-BAND_H = 30
-AXIS_LABEL_Y = 1176       # time-axis labels
-FOOTER_Y = HEIGHT - 44
+MOON_TOP = 178            # thin strip the moon glyph rides in
+MOON_BOT = 246
+ALT_SCALE = 72.0          # moon altitude (deg) mapped across the moon strip
+
+PLOT_TOP = 270            # top of the tide panel
+PLOT_BOTTOM = 1118
+
+BAND_TOP = 1136           # day/night band
+BAND_H = 28
+
+TEMP_TOP = 1182           # optional temperature line (bottom)
+TEMP_BOT = 1256
+
+FOOTER_Y = HEIGHT - 60
 
 _FONT_DIRS = [
     "/usr/share/fonts/truetype/dejavu",
