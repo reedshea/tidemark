@@ -98,7 +98,7 @@ def render(ctx):
     lo = to_disp(series.min)
     hi = to_disp(series.max)
     y_lo = lo - 0.7
-    y_hi = hi + max(0.6, (hi - lo) * 0.14)
+    y_hi = hi + max(0.8, (hi - lo) * 0.16)
 
     def Yv(v):  # display-unit value -> pixel
         return T.PLOT_BOTTOM - (v - y_lo) / (y_hi - y_lo) \
@@ -108,6 +108,7 @@ def render(ctx):
         return Yv(to_disp(h_m))
 
     _draw_daynight(c, ctx, X, start, end)
+    _draw_sky(c, ctx, X)
     _draw_height_axis(c, Yv, y_lo, y_hi, unit_label)
     _draw_time_axis(c, ctx, X)
     _draw_curve(c, series, X, Y, now)
@@ -125,8 +126,8 @@ def _draw_daynight(c, ctx, X, start, end):
     gray — the swim answer at a glance, without a heavy full-screen wash."""
     band_top = T.BAND_TOP
     band_bot = T.BAND_TOP + T.BAND_H
-    # paint everything as night, then lift daylight back to paper white
-    c.rect((T.PLOT_LEFT, T.PLOT_TOP, T.PLOT_RIGHT, T.PLOT_BOTTOM),
+    # paint everything (sky + sea) as night, then lift daylight back to paper
+    c.rect((T.PLOT_LEFT, T.SKY_TOP, T.PLOT_RIGHT, T.PLOT_BOTTOM),
            fill=T.NIGHT_WASH)
     c.rect((T.PLOT_LEFT, band_top, T.PLOT_RIGHT, band_bot), fill=T.FAINT)
     for (sr, sset) in ctx["daylight"]:
@@ -134,7 +135,7 @@ def _draw_daynight(c, ctx, X, start, end):
         x1 = min(T.PLOT_RIGHT, X(sset))
         if x1 <= x0:
             continue
-        c.rect((x0, T.PLOT_TOP, x1, T.PLOT_BOTTOM), fill=T.PAPER)
+        c.rect((x0, T.SKY_TOP, x1, T.PLOT_BOTTOM), fill=T.PAPER)
         c.rect((x0, band_top, x1, band_bot), fill=T.PAPER)
     c.line([(T.PLOT_LEFT, band_top), (T.PLOT_RIGHT, band_top)], T.GRID, 1)
     c.line([(T.PLOT_LEFT, band_bot), (T.PLOT_RIGHT, band_bot)], T.GRID, 1)
@@ -177,7 +178,7 @@ def _draw_time_axis(c, ctx, X):
                anchor="ma")
         if is_midnight:
             # day divider: faint full-height rule + date label
-            c.line([(x, T.PLOT_TOP), (x, T.BAND_TOP)], T.FAINT, 1)
+            c.line([(x, T.SKY_TOP), (x, T.BAND_TOP)], T.FAINT, 1)
             c.text((x, T.AXIS_LABEL_Y + 30), t.strftime("%a %b %-d"),
                    T.INK_SOFT, "serif", 22, anchor="ma")
         t += datetime.timedelta(hours=3)
@@ -228,7 +229,7 @@ def _draw_now(c, series, X, Y, now, to_disp, unit_label):
     x = X(now)
     h = series.height_at(now)
     y = Y(h)
-    c.line([(x, T.PLOT_TOP - 6), (x, T.PLOT_BOTTOM)], T.INK_SOFT, 1)
+    c.line([(x, T.SKY_TOP), (x, T.PLOT_BOTTOM)], T.INK_SOFT, 1)
     c.dot(x, y, 7, fill=T.INK)
     c.dot(x, y, 12, fill=None, outline=T.PAPER, width=3)
     c.dot(x, y, 12, fill=None, outline=T.INK, width=1)
@@ -248,39 +249,83 @@ def _draw_header(c, ctx):
            "sans", 26, anchor="rs")
     # header rule
     c.line([(T.PLOT_LEFT - 4, 150), (T.PLOT_RIGHT, 150)], T.GRID, 1)
-    _draw_moon(c, ctx, T.PLOT_RIGHT - 360, 196)
 
 
-def _draw_moon(c, ctx, cx, cy):
-    moon = ctx["moon"]
-    r = 30
-    frac, illum = moon["frac"], moon["illum"]
-    # dark disk then lit lune
-    c.dot(cx, cy, r, fill=T.INK_SOFT, outline=T.INK, width=2)
+def _moon_glyph(c, cx, cy, r, frac, illum):
+    """Draw a true-phase moon: dark disk with the illuminated lune in paper."""
+    c.dot(cx, cy, r, fill=T.INK_SOFT)
     waxing = frac < 0.5
     rx = r * (1 - 2 * illum)  # signed terminator x-radius
     steps = 48
     poly = []
-    for i in range(steps + 1):  # limb side (top->bottom)
+    for i in range(steps + 1):  # limb side (top -> bottom)
         a = -math.pi / 2 + math.pi * i / steps
         poly.append((cx + (r if waxing else -r) * math.cos(a),
                      cy + r * math.sin(a)))
-    for i in range(steps + 1):  # terminator side (bottom->top)
+    for i in range(steps + 1):  # terminator side (bottom -> top)
         a = math.pi / 2 - math.pi * i / steps
         poly.append((cx + (rx if waxing else -rx) * math.cos(a),
                      cy + r * math.sin(a)))
     if illum > 0.01:
         c.polygon(poly, fill=T.PAPER)
     c.dot(cx, cy, r, fill=None, outline=T.INK, width=2)
-    # label + rise/set
-    c.text((cx + r + 18, cy - 22), moon["name"], T.INK, "serif", 28,
-           anchor="lm")
-    rs = "  ".join(f"{'▲' if k == 'moonrise' else '▼'} {_fmt_time(t)}"
-                   for k, t in moon["events"][:2])
-    c.text((cx + r + 18, cy + 12), f"{int(round(illum*100))}% lit", T.INK_SOFT,
-           "sans", 22, anchor="lm")
-    if rs:
-        c.text((cx + r + 18, cy + 40), rs, T.INK_SOFT, "sans", 22, anchor="lm")
+
+
+def _draw_sky(c, ctx, X):
+    """The sky panel: the moon's real altitude arc from rise to set, with the
+    phase glyph riding at its high point. Sun stays as the day/night band."""
+    moon = ctx["moon"]
+    track = moon["track"]
+    frac, illum = moon["frac"], moon["illum"]
+
+    def sky_y(alt):
+        a = max(0.0, min(alt, T.ALT_SCALE))
+        return T.HORIZON_Y - a / T.ALT_SCALE * (T.HORIZON_Y - T.SKY_TOP)
+
+    # horizon line
+    c.line([(T.PLOT_LEFT, T.HORIZON_Y), (T.PLOT_RIGHT, T.HORIZON_Y)],
+           T.GRID, 1)
+
+    # split the track into above-horizon arc segments
+    segments, seg = [], []
+    for (t, alt) in track:
+        if alt > 0:
+            seg.append((X(t), sky_y(alt), alt))
+        elif seg:
+            segments.append(seg)
+            seg = []
+    if seg:
+        segments.append(seg)
+
+    best_apex = None  # (x, y, alt) of the highest transit, for the label
+    for seg in segments:
+        pts = [(x, y) for x, y, _ in seg]
+        if len(pts) > 1:
+            c.line(pts, T.INK_SOFT, 2)
+        # only glyph a genuine transit: an interior altitude maximum, so partial
+        # arcs clipped at the window edge show as a bare rising/setting line
+        ai = max(range(len(seg)), key=lambda i: seg[i][2])
+        apex = seg[ai]
+        if 0 < ai < len(seg) - 1 and apex[2] > 6:
+            _moon_glyph(c, apex[0], apex[1], 26, frac, illum)
+            if best_apex is None or apex[2] > best_apex[2]:
+                best_apex = apex
+
+    # rise/set ticks + times at the horizon
+    for kind, t in moon["events"]:
+        x = X(t)
+        if x < T.PLOT_LEFT + 4 or x > T.PLOT_RIGHT - 4:
+            continue
+        c.line([(x, T.HORIZON_Y - 7), (x, T.HORIZON_Y + 7)], T.INK_SOFT, 1)
+        arrow = "▲" if kind == "moonrise" else "▼"
+        c.text((x, T.HORIZON_Y + 14), f"{arrow} {_fmt_time(t)}", T.INK_SOFT,
+               "sans", 20, anchor="ma")
+
+    # phase name + illumination beside the highest moon
+    if best_apex is not None:
+        label = f"{moon['name']} · {int(round(illum * 100))}%"
+        c.text((best_apex[0] + 40, best_apex[1] - 8), label, T.INK_SOFT,
+               "serif", 24, anchor="lm")
 
 
 def _draw_footer(c, ctx):

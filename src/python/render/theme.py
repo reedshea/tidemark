@@ -23,10 +23,14 @@ FAINT = 226       # night band fill
 TWILIGHT = 246    # twilight band fill
 NIGHT_WASH = 246  # barely-there night shading inside the plot
 
-# Plot geometry
+# Plot geometry. The canvas splits into a sky panel (celestial arcs, above the
+# horizon) and the tide/sea panel (below it).
 PLOT_LEFT = 124
 PLOT_RIGHT = WIDTH - 70
-PLOT_TOP = 286
+SKY_TOP = 188             # top of the sky panel
+HORIZON_Y = 436           # the horizon: arcs rise from here, sea sits below
+ALT_SCALE = 72.0          # altitude (deg) mapped to the full sky-panel height
+PLOT_TOP = 492            # top of the tide panel
 PLOT_BOTTOM = 1112
 
 BAND_TOP = 1130           # daylight band

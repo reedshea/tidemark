@@ -61,6 +61,12 @@ grays, direct labels, no boxes or heavy gridlines. The chart is rendered at 2×
 and downsampled for smooth anti-aliased lines. Daylight high tides sit on white;
 night ones sit on a faint gray wash — the swim answer, read at a glance.
 
+The canvas is split into a **sky panel** and a **sea panel** by a horizon line.
+The moon traces its real altitude arc across the sky — rising, transiting, and
+setting at the correct times and the correct height (a near-solstice full moon
+rides low; a winter moon climbs high) — with the phase glyph at its high point.
+The sky panel is also where optional weather will live.
+
 ## Build & run
 
 ```bash

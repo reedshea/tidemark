@@ -39,13 +39,14 @@ def build_context(now=None):
     frac, illum = moonmod.phase(now)
     moon_events = moonmod.rise_set(start, end, loc["latitude"],
                                    loc["longitude"], tz)
-    # prefer the next upcoming rise/set pair
-    upcoming = [e for e in moon_events if e[1] >= now] or moon_events
+    moon_track = moonmod.altitude_track(start, end, loc["latitude"],
+                                        loc["longitude"])
     moon = {
         "frac": frac,
         "illum": illum,
         "name": moonmod.phase_name(frac),
-        "events": upcoming,
+        "events": moon_events,   # all rise/set within the window
+        "track": moon_track,     # (datetime, altitude_deg) for the sky arc
     }
 
     return {

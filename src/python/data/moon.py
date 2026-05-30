@@ -86,6 +86,23 @@ def _altitude(dt, lat, lon):
     return alt * R2D
 
 
+def altitude(dt, lat, lon):
+    """Public alias: Moon altitude (deg) above the horizon."""
+    return _altitude(dt, lat, lon)
+
+
+def altitude_track(start, end, lat, lon, step_minutes=6):
+    """Sampled (datetime, altitude_deg) over [start, end] for plotting the
+    moon's arc across the sky."""
+    track = []
+    t = start
+    step = datetime.timedelta(minutes=step_minutes)
+    while t <= end:
+        track.append((t, _altitude(t, lat, lon)))
+        t += step
+    return track
+
+
 def rise_set(start, end, lat, lon, tz):
     """
     Moonrise and moonset events (tz-aware) in [start, end].
