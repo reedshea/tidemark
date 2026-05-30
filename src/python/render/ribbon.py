@@ -107,8 +107,13 @@ def render(ctx):
     def Y(h_m):  # meters -> pixel
         return Yv(to_disp(h_m))
 
+    has_wx = ctx.get("weather") is not None
+    arc_top = T.WX_MOON_TOP if has_wx else T.SKY_TOP
+
     _draw_daynight(c, ctx, X, start, end)
-    _draw_sky(c, ctx, X)
+    if has_wx:
+        _draw_weather(c, ctx, X)
+    _draw_sky(c, ctx, X, arc_top)
     _draw_height_axis(c, Yv, y_lo, y_hi, unit_label)
     _draw_time_axis(c, ctx, X)
     _draw_curve(c, series, X, Y, now)
@@ -271,7 +276,87 @@ def _moon_glyph(c, cx, cy, r, frac, illum):
     c.dot(cx, cy, r, fill=None, outline=T.INK, width=2)
 
 
-def _draw_sky(c, ctx, X):
+def _cloud_gray(pct):
+    """Quantize cloud cover into a few gray levels (avoids e-ink banding)."""
+    if pct is None:
+        return None
+    for thresh, gray in ((12, T.PAPER), (37, 234), (62, 212),
+                         (87, 190), (101, 170)):
+        if pct < thresh:
+            return gray
+    return 170
+
+
+def _draw_weather(c, ctx, X):
+    """Air-temperature line (top of sky) and a cloud-cover strip with precip
+    hatching just above the horizon. Drawn only when a forecast is available."""
+    wx = ctx["weather"]
+    start, end = ctx["start"], ctx["end"]
+    hours = []
+    t = start.replace(minute=0, second=0, microsecond=0)
+    while t <= end:
+        hours.append(t)
+        t += datetime.timedelta(hours=1)
+
+    # --- cloud-cover strip (just above the horizon) ---
+    top, bot = T.WX_CLOUD_TOP, T.WX_CLOUD_TOP + T.WX_CLOUD_H
+    for h in hours:
+        x0 = max(T.PLOT_LEFT, X(h))
+        x1 = min(T.PLOT_RIGHT, X(h + datetime.timedelta(hours=1)))
+        if x1 <= x0:
+            continue
+        gray = _cloud_gray(wx.cloud(h + datetime.timedelta(minutes=30)))
+        if gray is not None and gray < T.PAPER:
+            c.rect((x0, top, x1, bot), fill=gray)
+        # precipitation hatching
+        mid = h + datetime.timedelta(minutes=30)
+        pop = wx.precip_prob(mid) or 0
+        kind = wx.precip_kind(mid)
+        if kind and pop >= 25:
+            if kind == "rain":
+                step = 16 if pop < 60 else 9
+                xx = x0
+                while xx < x1:
+                    c.line([(xx, bot - 3), (xx + 7, top + 3)], T.INK_SOFT, 1)
+                    xx += step
+            else:  # snow
+                step = 16 if pop < 60 else 10
+                xx = x0 + 4
+                while xx < x1:
+                    c.dot(xx, (top + bot) / 2, 1.6, fill=T.INK_SOFT)
+                    xx += step
+    c.line([(T.PLOT_LEFT, top), (T.PLOT_RIGHT, top)], T.GRID, 1)
+    c.line([(T.PLOT_LEFT, bot), (T.PLOT_RIGHT, bot)], T.GRID, 1)
+    c.text((T.PLOT_LEFT - 14, (top + bot) / 2), "cloud", T.GRID, "sans", 18,
+           anchor="rm")
+
+    # --- air-temperature line (top of the sky panel) ---
+    pts = [(X(h), wx.temp_f(h)) for h in hours if wx.temp_f(h) is not None]
+    if len(pts) < 2:
+        return
+    vals = [v for _, v in pts]
+    tmin, tmax = min(vals), max(vals)
+    pad = max(2.0, (tmax - tmin) * 0.25)
+    lo, hi = tmin - pad, tmax + pad
+
+    def ty(v):
+        return T.WX_TEMP_BOT - (v - lo) / (hi - lo) \
+            * (T.WX_TEMP_BOT - T.WX_TEMP_TOP)
+
+    c.line([(x, ty(v)) for x, v in pts], T.INK_SOFT, 2)
+    c.text((T.PLOT_LEFT - 14, T.WX_TEMP_TOP + 6), "°F", T.GRID, "sans", 18,
+           anchor="rm")
+    # mark the warmest and coolest points
+    for label_v, want_max in ((tmax, True), (tmin, False)):
+        x, v = next((p for p in pts if p[1] == label_v))
+        y = ty(v)
+        c.dot(x, y, 3, fill=T.INK_SOFT)
+        c.text((x, y - 16 if want_max else y + 16),
+               f"{round(v)}°", T.INK_SOFT, "sans", 20,
+               anchor="md" if want_max else "ma")
+
+
+def _draw_sky(c, ctx, X, arc_top):
     """The sky panel: the moon's real altitude arc from rise to set, with the
     phase glyph riding at its high point. Sun stays as the day/night band."""
     moon = ctx["moon"]
@@ -280,7 +365,7 @@ def _draw_sky(c, ctx, X):
 
     def sky_y(alt):
         a = max(0.0, min(alt, T.ALT_SCALE))
-        return T.HORIZON_Y - a / T.ALT_SCALE * (T.HORIZON_Y - T.SKY_TOP)
+        return T.HORIZON_Y - a / T.ALT_SCALE * (T.HORIZON_Y - arc_top)
 
     # horizon line
     c.line([(T.PLOT_LEFT, T.HORIZON_Y), (T.PLOT_RIGHT, T.HORIZON_Y)],

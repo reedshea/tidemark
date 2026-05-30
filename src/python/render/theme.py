@@ -33,6 +33,15 @@ ALT_SCALE = 72.0          # altitude (deg) mapped to the full sky-panel height
 PLOT_TOP = 492            # top of the tide panel
 PLOT_BOTTOM = 1112
 
+# Weather sub-regions inside the sky panel (used only when weather is present).
+# Top to bottom: temperature line, then moon arc, then a cloud strip riding
+# just above the horizon.
+WX_TEMP_TOP = 168
+WX_TEMP_BOT = 250
+WX_MOON_TOP = 272         # moon arc top when weather is shown (else SKY_TOP)
+WX_CLOUD_TOP = 408
+WX_CLOUD_H = 24
+
 BAND_TOP = 1130           # daylight band
 BAND_H = 30
 AXIS_LABEL_Y = 1176       # time-axis labels

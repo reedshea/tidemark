@@ -49,6 +49,16 @@ def build_context(now=None):
         "track": moon_track,     # (datetime, altitude_deg) for the sky arc
     }
 
+    weather = None
+    if config.WEATHER_ENABLED:
+        from data import weather as wx
+        cache_dir = os.path.expanduser("~/.tidemark")
+        weather = wx.get_forecast(
+            loc["latitude"], loc["longitude"], cache_dir,
+            max_age_hours=config.WEATHER_MAX_AGE_HOURS,
+            allow_network=config.WEATHER_ALLOW_NETWORK,
+            contact=config.WEATHER_CONTACT)
+
     return {
         "location": loc,
         "now": now,
@@ -57,6 +67,7 @@ def build_context(now=None):
         "series": series,
         "daylight": daylight,
         "moon": moon,
+        "weather": weather,
         "units": config.HEIGHT_UNITS,
     }
 

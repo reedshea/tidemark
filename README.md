@@ -23,7 +23,8 @@ src/python/
     stations.py        NOAA harmonic constituents per station
     tide.py            Tide curve + high/low extrema over a time window
     sun.py             Sunrise/sunset/twilight (NOAA solar algorithm)
-    moon.py            Moon phase + rise/set
+    moon.py            Moon phase + rise/set + altitude arc
+    weather.py         Optional NWS forecast (temp/cloud/precip), offline-safe
   render/
     theme.py           Palette, fonts, geometry (e-ink friendly)
     ribbon.py          The Tufte-style tide ribbon
@@ -65,7 +66,14 @@ The canvas is split into a **sky panel** and a **sea panel** by a horizon line.
 The moon traces its real altitude arc across the sky — rising, transiting, and
 setting at the correct times and the correct height (a near-solstice full moon
 rides low; a winter moon climbs high) — with the phase glyph at its high point.
-The sky panel is also where optional weather will live.
+
+### Optional weather (the only online piece)
+
+When enabled (`config.WEATHER_ENABLED`), the sky panel also shows an air-
+temperature line and a cloud-cover strip (with precip hatching) from the US
+National Weather Service. It is strictly additive and offline-safe: the
+forecast is cached to disk, refreshed only when stale, and simply omitted when
+there is no cache and no network. Tide, sun, and moon never touch the internet.
 
 ## Build & run
 
