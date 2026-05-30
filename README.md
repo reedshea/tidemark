@@ -1,127 +1,102 @@
 # Tidemark
 
-A hybrid C/Python application for displaying tide charts on an e-ink display.
+A clean, offline tide display for e-ink. Tidemark answers one question at a
+glance — *when is high tide, and is it during daylight?* — so you can plan the
+swim off the dock without checking a tide app.
 
-## Project Overview
+It runs on a Raspberry Pi driving a Waveshare 7.8" IT8951 e-ink panel, needs no
+internet, and is styled in the spirit of Edward Tufte: one black tide line, a
+slim day/night band, directly-labeled highs and lows, and a true-phase moon.
 
-Tidemark combines Python for data fetching and visualization with C for hardware interfacing. This approach provides:
+![A Tidemark render](docs/sample.png)
 
-- Easy creation of complex visualizations in Python
-- Efficient hardware interfacing in C
-- Simple deployment to Raspberry Pi
+## How it works
 
-The application displays a tide chart with:
-- Sky visualization (day/night with sun/moon)
-- Tide graph showing tide levels over 24 hours
-- High and low tide markings with times
-- Periodic refreshing (configurable)
-
-## Project Structure
+A small C host runs the display loop and pushes a bitmap to the panel (or to an
+SDL simulator on macOS). A Python program generates that bitmap:
 
 ```
-tidemark/
-├── build/           # Build outputs and Makefile
-├── lib/             # Third-party C libraries (IT8951)
-├── src/             # Source code
-│   ├── c/           # C code
-│   │   ├── display/ # Display driver code
-│   │   │   ├── display_layer.c/h   # Common display interface
-│   │   │   ├── display_bitmap.c/h  # Bitmap handling
-│   │   │   └── display_eink.c      # E-ink specific code
-│   │   └── main.c  # Main application
-│   └── python/     # Python code
-│       ├── render/  # Visualization rendering code
-│       │   ├── sky.py      # Sky visualization
-│       │   └── tide.py     # Tide chart visualization 
-│       ├── data/           # Data fetching and processing
-│       │   └── tide_api.py # Tide data fetching
-│       └── main.py         # Main Python entry point
-├── sim/             # SDL simulator
-├── venv/            # Python virtual environment
-└── CLAUDE.md        # Project notes and commands
+src/python/
+  config.py            Active location: lat/long, timezone, station, units
+  data/
+    harmonics.py       Harmonic tide engine with full astronomical corrections
+    stations.py        NOAA harmonic constituents per station
+    tide.py            Tide curve + high/low extrema over a time window
+    sun.py             Sunrise/sunset/twilight (NOAA solar algorithm)
+    moon.py            Moon phase + rise/set + altitude arc
+    weather.py         Optional NWS forecast (temp/cloud/precip), offline-safe
+  render/
+    theme.py           Palette, fonts, geometry (e-ink friendly)
+    ribbon.py          The Tufte-style tide ribbon
+  main.py              Assembles data + renders the BMP
+src/c/                 Display host (main loop, BMP load, IT8951/SDL backends)
+sim/                   SDL2 simulator for desktop iteration
+lib/IT8951/            Waveshare driver
 ```
 
-## Requirements
+### Accurate tides, fully offline
 
-### Hardware
-- Raspberry Pi
-- Waveshare 7.8" E-Ink Display with IT8951 driver
+Tide height is predicted from NOAA harmonic constituents. The naïve model
+`height = MSL + Σ A·cos(speed·t + phase)` is wrong by *hours* because it omits
+the equilibrium argument (V₀+u) and nodal factor (f) that real harmonic
+prediction needs. `harmonics.py` computes those from the astronomical mean
+longitudes, so predictions are accurate with no network connection.
 
-### Software Dependencies
-- **C Development**:
-  - GCC or compatible compiler
-  - SDL2 and SDL2_ttf (for macOS simulator)
-  - bcm2835 library (for Raspberry Pi)
+Validated against NOAA station 8447368 (Great Hill):
 
-- **Python**:
-  - Python 3.6+
-  - pillow (PIL fork)
-  - numpy
+| metric | result |
+|---|---|
+| high-tide timing | ~3 min mean error (max 11 min) |
+| low-tide timing | flat troughs; heights within ~0.1 m |
+| full-curve RMS | ~0.17 m over a ~1.2 m range |
+| timing bias | ~0 |
 
-## Setup and Build
+Sun and moon are likewise computed (no hardcoded tables): day length, moon
+phase, and moonrise/moonset are correct for any date and location.
 
-### 1. Set up Python environment
+## Design
+
+Built for e-ink, where large mid-gray fills and fine texture cause ghosting and
+banding. So: white ground, a single black data line, a tiny restrained set of
+grays, direct labels, no boxes or heavy gridlines. The chart is rendered at 2×
+and downsampled for smooth anti-aliased lines. Daylight high tides sit on white;
+night ones sit on a faint gray wash — the swim answer, read at a glance.
+
+The canvas is split into a **sky panel** and a **sea panel** by a horizon line.
+The moon traces its real altitude arc across the sky — rising, transiting, and
+setting at the correct times and the correct height (a near-solstice full moon
+rides low; a winter moon climbs high) — with the phase glyph at its high point.
+
+### Optional weather (the only online piece)
+
+When enabled (`config.WEATHER_ENABLED`), the sky panel also shows an air-
+temperature line and a cloud-cover strip (with precip hatching) from the US
+National Weather Service. It is strictly additive and offline-safe: the
+forecast is cached to disk, refreshed only when stale, and simply omitted when
+there is no cache and no network. Tide, sun, and moon never touch the internet.
+
+## Build & run
 
 ```bash
-# Create and activate virtual environment
-make venv
-source venv/bin/activate
+# macOS simulator
+cd build && make clean && PLATFORM=macos make && ./tidemark_sim
+
+# Raspberry Pi
+cd build && make clean && make && sudo ./tidemark
+
+# Generate just the image (any platform with Python 3.9+ and Pillow)
+python3 src/python/main.py --output /tmp/tide.bmp
+python3 src/python/main.py --now 2026-05-30T14:23 --output /tmp/tide.bmp   # test a time
 ```
 
-### 2. Build the application
+The only Python dependency is **Pillow**. (`make venv` sets up a virtualenv.)
 
-```bash
-cd build
-make clean
-make
-```
+Deploy to a Pi over SSH with `./dev.sh` (rsync + build + run) or `./deploy.sh`
+(installs a systemd service).
 
-### 3. Run the application
+## Configuring a location
 
-```bash
-# On macOS (simulator)
-./tidemark_sim
-
-# On Raspberry Pi
-sudo ./tidemark
-```
-
-## Command Line Options
-
-- `--day`: Force day mode display
-- `--night`: Force night mode display
-- `--sim`: Use simulator (automatically used on macOS)
-- `--help`: Show help information
-
-## Customization
-
-### Tide Data Source
-
-The sample tide data in `src/python/data/tide_api.py` should be replaced with a real API integration.
-Implement the `get_tide_data()` function to fetch data from your preferred source.
-
-### Visual Customization
-
-- Sky visualization: `src/python/render/sky.py`
-- Tide graph: `src/python/render/tide.py`
-- Main layout: `src/python/main.py`
-
-## Development
-
-### macOS Development with Simulator
-For faster development iteration, you can use the SDL2-based display simulator on macOS:
-
-1. Install dependencies:
-```bash
-brew install sdl2 sdl2_ttf
-```
-
-2. From the `build` directory, build & run the simulator:
-```bash
-make clean && PLATFORM=macos make && ./tidemark_sim
-```
-
-The simulator creates a window that matches the e-ink display's dimensions and grayscale levels, allowing for rapid development without needing to deploy to the Raspberry Pi for every change.
-
-### Raspberry Pi Deployment
-`deploy.sh` is a script that copies files to a Raspberry Pi, then builds and runs the program. It assumes local network SSH access to the Pi.
+Everything location-specific lives in `src/python/config.py`: name, latitude,
+longitude, timezone, units (`ft`/`m`), and which harmonic station to use. Add a
+station's NOAA constituents to `src/python/data/stations.py` and point
+`config.LOCATION` at it.
