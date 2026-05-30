@@ -138,6 +138,7 @@ def _draw_top_axis(c, ctx, X):
     """Minimal time axis along the top: 3-hour ticks, midnights become the next
     day's name, and the day/night dividers drop the full height."""
     start, end = ctx["start"], ctx["end"]
+    now_x = X(ctx["now"])
     bottom = T.BAND_TOP + T.BAND_H
     t = start.replace(minute=0, second=0, microsecond=0)
     while t < start or t.hour % 3 != 0:
@@ -149,7 +150,7 @@ def _draw_top_axis(c, ctx, X):
             c.line([(x, T.TICK_Y), (x, bottom)], T.FAINT, 1)
             c.text((x + 10, T.TIME_LABEL_Y), t.strftime("%A"), T.INK_SOFT,
                    "serif", 26, anchor="lb")
-        else:
+        elif abs(x - now_x) >= 48:  # let the 'now' label own its slot
             c.line([(x, T.TICK_Y), (x, T.TICK_Y + 7)], T.GRID, 1)
             # 9a / noon / 3p — the daytime hours — a touch darker
             daytime = 8 <= t.hour <= 16
@@ -301,10 +302,12 @@ def _draw_title(c, ctx):
     we are). 'now' time rides the now-line; this is the static heading."""
     loc = ctx["location"]
     now = ctx["now"]
-    c.text((T.PLOT_LEFT - 4, 88), now.strftime("%A, %B %-d"), T.INK, "serif",
-           50, anchor="lb")
-    c.text((T.PLOT_RIGHT, 88), loc["name"], T.INK_SOFT, "serif", 30,
-           anchor="rb")
+    # the day, prominent at top-right
+    c.text((T.PLOT_RIGHT, 88), now.strftime("%A, %B %-d"), T.INK, "serif",
+           50, anchor="rb")
+    # location, small and unobtrusive at top-left
+    c.text((T.PLOT_LEFT - 4, 86), loc["name"], T.INK_SOFT, "serif", 30,
+           anchor="lb")
     c.line([(T.PLOT_LEFT - 4, T.TOP_RULE_Y), (T.PLOT_RIGHT, T.TOP_RULE_Y)],
            T.GRID, 1)
 
