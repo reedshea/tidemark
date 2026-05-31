@@ -33,13 +33,12 @@ PAD = 54                  # breathing room from border to the drawing area
 PLOT_LEFT = MARGIN + PAD
 PLOT_RIGHT = WIDTH - MARGIN - PAD
 
-# Top "chart furniture": a title row (day + date) and an axis row below it
-# carrying tick marks and sunrise / noon / sunset times.
-TITLE_Y = MARGIN + 34             # baseline of the big day name
-DATE_Y = TITLE_Y + 38             # baseline of the smaller date line
-SUN_LABEL_Y = DATE_Y + 56         # sunrise/noon/sunset times row
-AXIS_TICK_Y = SUN_LABEL_Y + 18    # x-axis line + ticks; also the night-box top
-AXIS_TICK_LONG = 18               # tick length for 6h / day marks
+# Top "chart furniture", three rows top-to-bottom: day+date, sun times,
+# then the x-axis line (also the night-box ceiling) with its hour ticks.
+TITLE_Y = MARGIN + 64             # baseline of the day + date title line
+SUN_LABEL_Y = TITLE_Y + 52        # sunrise / noon / sunset times row
+AXIS_TICK_Y = SUN_LABEL_Y + 22    # x-axis line + ticks; also the night-box top
+AXIS_TICK_LONG = 18               # tick length for 6h / midnight marks
 AXIS_TICK_SHORT = 10              # tick length for 3h marks
 
 SKY_TOP = AXIS_TICK_Y             # night bands hang from the axis line down
