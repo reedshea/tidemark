@@ -279,11 +279,11 @@ def _draw_title_and_axis(c, ctx, X):
     while d <= last:
         ev = sun_events(d, loc["latitude"], loc["longitude"], tz)
         sr, ss = ev["sunrise"], ev["sunset"]
+        noon = datetime.datetime(d.year, d.month, d.day, 12, tzinfo=tz)
         marks = []
         if sr:
             marks.append((sr, sr))                        # sunrise time
-        if sr and ss:
-            marks.append(("noon", sr + (ss - sr) / 2))    # solar noon
+        marks.append(("noon", noon))                      # clock noon — at its tick
         if ss:
             marks.append((ss, ss))                        # sunset time
         for label, when in marks:
@@ -293,13 +293,13 @@ def _draw_title_and_axis(c, ctx, X):
             if label == "noon":
                 w = c.text_width("noon", "sans", T.FONT_TIME)
                 lx = min(x, T.PLOT_RIGHT - w)
-                c.text((lx, T.SUN_LABEL_Y), "noon", T.INK_SOFT, "sans",
+                c.text((lx, T.SUN_LABEL_Y), "noon", T.INK, "sans",
                        T.FONT_TIME, anchor="ls")
             else:
                 w = _time_width(c, label, T.FONT_TIME)
                 lx = min(x, T.PLOT_RIGHT - w)   # left-align at the tick, clamp
                 _draw_time(c, lx, T.SUN_LABEL_Y, label, T.FONT_TIME,
-                           T.INK_SOFT, "sans", align="l")
+                           T.INK, "sans", align="l")
         d += datetime.timedelta(days=1)
 
     # --- axis line + hour ticks at 3 / 6 / 9 / 12 (ticks hang into night) ---
@@ -381,7 +381,7 @@ def _draw_extrema(c, series, X, Y, now):
         if e.kind == "H":
             is_next = (e is next_high)
             c.dot(x, y, 6, fill=ink)
-            _draw_time(c, x, y - 22, e.time, T.FONT_TIME, ink,
+            _draw_time(c, x, y - 22, e.time, T.FONT_TIME, T.INK,
                        "sans_bold" if is_next else "sans", align="m")
         else:
             c.dot(x, y, 5, fill=T.PAPER, outline=ink, width=2)
