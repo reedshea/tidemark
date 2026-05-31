@@ -120,13 +120,14 @@ def _sky_shade(alt):
 
 
 def _draw_daynight(c, ctx, X):
-    """A full-height day/night gradient behind the chart: each column's gray
-    tracks the sun's altitude — white by day, gray through dawn/dusk to its
-    darkest at solar midnight. Everything else is drawn on top."""
+    """A day/night gradient behind the lower chart: each column's gray tracks
+    the sun's altitude — white by day, gray through dawn/dusk to its darkest at
+    solar midnight. It ends ~2/3 of the way up so the moon and day label ride on
+    clean white above it. Everything else is drawn on top."""
     loc = ctx["location"]
     start, end = ctx["start"], ctx["end"]
     span_s = (end - start).total_seconds()
-    top, bot = 0, T.HEIGHT
+    top, bot = round(T.HEIGHT / 3), T.HEIGHT
     n = int(T.PLOT_RIGHT - T.PLOT_LEFT)        # ~one sample per logical pixel
     w = (T.PLOT_RIGHT - T.PLOT_LEFT) / n
     for i in range(n):
