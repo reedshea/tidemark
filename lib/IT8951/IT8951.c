@@ -795,11 +795,11 @@ void IT8951_BMP_Example(uint32_t x, uint32_t y,char *path)
 	Show_bmp(x,y,path);
 
 	IT8951WaitForDisplayReady();
-	
+
 	//Setting Load image information
 	stLdImgInfo.ulStartFBAddr    = (uint32_t)gpFrameBuf;
 	stLdImgInfo.usEndianType     = IT8951_LDIMG_L_ENDIAN;
-	stLdImgInfo.usPixelFormat    = IT8951_8BPP; 
+	stLdImgInfo.usPixelFormat    = IT8951_8BPP;
 	stLdImgInfo.usRotate         = IT8951_ROTATE_0;
 	stLdImgInfo.ulImgBufBaseAddr = gulImgBufAddr;
 	//Set Load Area
@@ -807,11 +807,13 @@ void IT8951_BMP_Example(uint32_t x, uint32_t y,char *path)
 	stAreaImgInfo.usY      = 0;
 	stAreaImgInfo.usWidth  = gstI80DevInfo.usPanelW;
 	stAreaImgInfo.usHeight = gstI80DevInfo.usPanelH;
-	
+
 	//Load Image from Host to IT8951 Image Buffer
 	IT8951HostAreaPackedPixelWrite(&stLdImgInfo, &stAreaImgInfo);//Display function 2
-	//Display Area ?V (x,y,w,h) with mode 2 for fast gray clear mode - depends on current waveform 
-	IT8951DisplayArea(0,0, gstI80DevInfo.usPanelW, gstI80DevInfo.usPanelH, 2);
+	//Mode 3 = GL16: full 16-level grayscale WITHOUT the GC16 black/white flash,
+	//so routine refreshes are non-flashing. The nightly INIT clear (mode 0, via
+	//IT8951_Clear_Refresh) periodically resets any ghosting GL16 leaves behind.
+	IT8951DisplayArea(0,0, gstI80DevInfo.usPanelW, gstI80DevInfo.usPanelH, 3);
 }
 
 //-----------------------------------------------------------
