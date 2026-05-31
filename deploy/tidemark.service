@@ -12,3 +12,7 @@ Type=oneshot
 WorkingDirectory=/home/reed/tidemark
 Environment=PWD=/home/reed/tidemark
 ExecStart=/home/reed/tidemark/build/tidemark
+# A render+display is ~30s; if one ever hangs holding the SPI bus, kill it so
+# the next cycle can recover instead of the display freezing.
+RuntimeMaxSec=120
+
