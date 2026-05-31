@@ -1,0 +1,13 @@
+[Unit]
+Description=Refresh the Tidemark display every 5 minutes
+
+[Timer]
+# Fire on the wall clock at :00, :05, :10, ... so the "now" marker stays current.
+OnCalendar=*:0/5
+# Also refresh shortly after boot so the panel isn't stale on startup.
+OnBootSec=30s
+AccuracySec=10s
+Persistent=false
+
+[Install]
+WantedBy=timers.target

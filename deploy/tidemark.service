@@ -1,0 +1,14 @@
+[Unit]
+Description=Tidemark e-ink tide display refresh
+# Render the tide ribbon once and push it to the IT8951 panel, then exit.
+# Driven on a schedule by tidemark.timer.
+After=multi-user.target
+
+[Service]
+Type=oneshot
+# Runs as root: the IT8951 driver needs GPIO/SPI access via bcm2835.
+# PWD is how the binary locates the project root (venv + Python script), and
+# sudo/systemd would otherwise drop it, so set it explicitly.
+WorkingDirectory=/home/reed/tidemark
+Environment=PWD=/home/reed/tidemark
+ExecStart=/home/reed/tidemark/build/tidemark
