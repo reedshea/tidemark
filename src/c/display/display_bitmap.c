@@ -120,11 +120,16 @@ bool display_bitmap(const char* file_path) {
         fclose(bf);
     }
 
+    // A flashing full INIT clear is the only thing that fully wipes ghosting.
+    // Run it the first cycle of every 4th hour (00,04,08,...20 — a few brief
+    // flashes a day), and on demand via TIDEMARK_FULL_CLEAR (used after a
+    // deploy to reset to a clean baseline).
     time_t now_t = time(NULL);
     struct tm *lt = localtime(&now_t);
-    int nightly = (lt && lt->tm_hour == 3 && lt->tm_min < 5);
-    if (nightly) {
-        printf("Nightly full INIT-mode refresh to reset ghosting...\n");
+    int periodic = (lt && lt->tm_min < 5 && (lt->tm_hour % 4) == 0);
+    int forced = (getenv("TIDEMARK_FULL_CLEAR") != NULL);
+    if (periodic || forced) {
+        printf("Full INIT-mode clear to reset ghosting...\n");
         IT8951_Clear_Refresh();
         is_partial = 0;
         is_none = 0;   // always redraw fully after the clear
