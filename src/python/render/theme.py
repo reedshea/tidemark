@@ -44,7 +44,7 @@ MOON_BOT = 246
 ALT_SCALE = 72.0          # moon altitude (deg) mapped across the moon strip
 
 PLOT_TOP = 270            # top of the tide panel
-PLOT_BOTTOM = 1118
+PLOT_BOTTOM = 1390        # bottom of the tide scale ~ bottom of the screen
 
 BAND_TOP = 1136           # day/night band
 BAND_H = 28

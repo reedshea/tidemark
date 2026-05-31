@@ -81,14 +81,14 @@ def render(ctx):
         return T.PLOT_LEFT + (dt - start).total_seconds() / span_s \
             * (T.PLOT_RIGHT - T.PLOT_LEFT)
 
-    # Fixed scale centered on mean tide level: the middle line sits exactly
-    # halfway, lows read as negative and highs as positive (local relative
-    # level, not absolute feet). 15% headroom keeps even annual extremes — and
-    # the labels above peaks — off the edges.
+    # Fixed scale from the station's annual extremes: the annual low sits near
+    # the bottom of the screen and the curve fills upward, with headroom up top
+    # for the peak labels. Mean tide level is marked by the mid line.
     sc = ctx["scale"]
     mid = to_disp(sc["mid"])
-    half = max(to_disp(sc["hi"]) - mid, mid - to_disp(sc["lo"])) * 1.15
-    y_lo, y_hi = mid - half, mid + half
+    lo, hi = to_disp(sc["lo"]), to_disp(sc["hi"])
+    rng = hi - lo
+    y_lo, y_hi = lo - rng * 0.03, hi + rng * 0.12
 
     def Yv(v):
         return T.PLOT_BOTTOM - (v - y_lo) / (y_hi - y_lo) \
@@ -106,7 +106,6 @@ def render(ctx):
     _draw_now(c, series, X, Y, now)
     if ctx.get("weather") is not None:
         _draw_temperature(c, ctx, X)
-    _draw_title(c, ctx)
 
     return c.finish()
 
@@ -121,14 +120,13 @@ def _sky_shade(alt):
 
 
 def _draw_daynight(c, ctx, X):
-    """A day/night gradient 'sky' block below the title (not full height): each
-    column's gray tracks the sun's altitude — white by day, gray through dawn/
-    dusk to its darkest at solar midnight. The moon rides on top at its transit.
-    The tide panel itself stays clean white."""
+    """A full-height day/night gradient behind the chart: each column's gray
+    tracks the sun's altitude — white by day, gray through dawn/dusk to its
+    darkest at solar midnight. Everything else is drawn on top."""
     loc = ctx["location"]
     start, end = ctx["start"], ctx["end"]
     span_s = (end - start).total_seconds()
-    top, bot = T.MOON_TOP, T.MOON_BOT
+    top, bot = 0, T.HEIGHT
     n = int(T.PLOT_RIGHT - T.PLOT_LEFT)        # ~one sample per logical pixel
     w = (T.PLOT_RIGHT - T.PLOT_LEFT) / n
     for i in range(n):
@@ -136,8 +134,6 @@ def _draw_daynight(c, ctx, X):
         shade = _sky_shade(sun_altitude(t, loc["latitude"], loc["longitude"]))
         x0 = T.PLOT_LEFT + i * w
         c.rect((x0, top, x0 + w + 1, bot), fill=shade)
-    c.line([(T.PLOT_LEFT, top), (T.PLOT_RIGHT, top)], T.GRID, 1)
-    c.line([(T.PLOT_LEFT, bot), (T.PLOT_RIGHT, bot)], T.GRID, 1)
 
 
 def _draw_top_axis(c, ctx, X):
@@ -158,11 +154,16 @@ def _draw_top_axis(c, ctx, X):
 
 
 def _draw_midline(c, Yv, mid):
-    """A single reference line at mean tide level — roughly halfway between high
-    and low. No numbers: it shows local relative level (below it reads as low/
-    'negative'), not absolute height."""
+    """A dashed reference line at mean tide level — roughly halfway between high
+    and low. Dashed and mid-gray so it reads over both the bright daytime and
+    the dark night portions of the gradient. Below it reads as low ('negative')
+    local relative level, not absolute height."""
     y = Yv(mid)
-    c.line([(T.PLOT_LEFT, y), (T.PLOT_RIGHT, y)], T.GRID, 1)
+    dash, gap = 16, 12
+    x = T.PLOT_LEFT
+    while x < T.PLOT_RIGHT:
+        c.line([(x, y), (min(x + dash, T.PLOT_RIGHT), y)], T.INK_SOFT, 1)
+        x += dash + gap
 
 
 def _moon_glyph(c, cx, cy, r, frac, illum):
@@ -198,32 +199,14 @@ def _draw_moon(c, ctx, X):
         return T.MOON_BOT - a / T.ALT_SCALE * (T.MOON_BOT - T.MOON_TOP)
 
     # transits = interior local maxima of altitude that are above the horizon
-    best = None
+    r = 44  # glyph radius (2x): the moon is a prominent element now
     for i in range(1, len(track) - 1):
         (_, a0), (ti, a1), (_, a2) = track[i - 1], track[i], track[i + 1]
         if a1 > 0 and a1 >= a0 and a1 >= a2:
             x = X(ti)
-            if x < T.PLOT_LEFT + 26 or x > T.PLOT_RIGHT - 26:
+            if x < T.PLOT_LEFT + r or x > T.PLOT_RIGHT - r:
                 continue
-            _moon_glyph(c, x, moon_y(a1), 22, frac, illum)
-            if best is None or a1 > best[1]:
-                best = (x, a1, moon_y(a1), ti)
-    if best is not None:
-        # Phase is shown by the glyph itself; label the moonrise time instead.
-        # Prefer the rise leading up to this transit; fall back to next rise,
-        # then to the next moonset if the moon never rises in the window.
-        rises = sorted(t for (k, t) in moon["events"] if k == "moonrise")
-        transit_t = best[3]
-        prior = [t for t in rises if t <= transit_t]
-        rise = prior[-1] if prior else (rises[0] if rises else None)
-        if rise is not None:
-            label = f"moonrise {_fmt_time(rise)}"
-        else:
-            sets = sorted(t for (k, t) in moon["events"] if k == "moonset")
-            label = f"moonset {_fmt_time(sets[0])}" if sets else None
-        if label:
-            c.text((best[0] + 34, best[2]), label, T.INK_SOFT, "serif", 22,
-                   anchor="lm")
+            _moon_glyph(c, x, moon_y(a1), r, frac, illum)
 
 
 def _draw_curve(c, series, X, Y, now):
@@ -265,7 +248,6 @@ def _draw_now(c, series, X, Y, now):
     c.dot(x, y, 7, fill=T.INK)
     c.dot(x, y, 12, fill=None, outline=T.PAPER, width=3)
     c.dot(x, y, 12, fill=None, outline=T.INK, width=1)
-    c.text((x, T.TIME_LABEL_Y), "now", T.INK, "sans_bold", 22, anchor="mb")
 
 
 def _draw_temperature(c, ctx, X):
@@ -299,16 +281,3 @@ def _draw_temperature(c, ctx, X):
                T.INK_SOFT, "sans", 20, anchor="md" if want_max else "ma")
 
 
-def _draw_title(c, ctx):
-    """Date prominent at top-right; location small at top-left (we know where
-    we are). 'now' time rides the now-line; this is the static heading."""
-    loc = ctx["location"]
-    now = ctx["now"]
-    # the day, prominent at top-right
-    c.text((T.PLOT_RIGHT, 88), now.strftime("%A, %B %-d"), T.INK, "serif",
-           50, anchor="rb")
-    # location, small and unobtrusive at top-left
-    c.text((T.PLOT_LEFT - 4, 86), loc["name"], T.INK_SOFT, "serif", 30,
-           anchor="lb")
-    c.line([(T.PLOT_LEFT - 4, T.TOP_RULE_Y), (T.PLOT_RIGHT, T.TOP_RULE_Y)],
-           T.GRID, 1)
