@@ -96,6 +96,11 @@ bool display_bitmap(const char* file_path) {
 #else
     // For Raspberry Pi, use the IT8951 library's BMP function
     #ifndef PLATFORM_MACOS
+    // Flash the panel clean with a full INIT-mode refresh first, so ghosting
+    // from the previous frame doesn't bleed through the new image.
+    printf("Clearing display with full INIT-mode refresh to remove ghosting...\n");
+    IT8951_Clear_Refresh();
+
     printf("Attempting to display bitmap on e-ink display using IT8951_BMP_Example...\n");
     // IT8951_BMP_Example returns void, so we're just calling it and assuming it works
     IT8951_BMP_Example(0, 0, (char*)file_path);

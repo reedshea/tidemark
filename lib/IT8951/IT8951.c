@@ -757,14 +757,41 @@ void IT8951_GUI_Example()
 	IT8951DisplayArea(0,0, gstI80DevInfo.usPanelW, gstI80DevInfo.usPanelH, 2);
 }
 
+// Full-panel INIT-mode (mode 0) refresh to white. The flashing waveform fully
+// resets the e-ink particles, clearing any ghost image left by the previous
+// frame. Call this before drawing a new frame to keep the display clean.
+void IT8951_Clear_Refresh(void)
+{
+	IT8951LdImgInfo stLdImgInfo;
+	IT8951AreaImgInfo stAreaImgInfo;
+
+	EPD_Clear(0xff);  // fill the host frame buffer with white
+
+	IT8951WaitForDisplayReady();
+
+	stLdImgInfo.ulStartFBAddr    = (uint32_t)gpFrameBuf;
+	stLdImgInfo.usEndianType     = IT8951_LDIMG_L_ENDIAN;
+	stLdImgInfo.usPixelFormat    = IT8951_8BPP;
+	stLdImgInfo.usRotate         = IT8951_ROTATE_0;
+	stLdImgInfo.ulImgBufBaseAddr = gulImgBufAddr;
+	stAreaImgInfo.usX      = 0;
+	stAreaImgInfo.usY      = 0;
+	stAreaImgInfo.usWidth  = gstI80DevInfo.usPanelW;
+	stAreaImgInfo.usHeight = gstI80DevInfo.usPanelH;
+
+	// Push the white buffer with mode 0 (INIT) so the panel flashes clean.
+	IT8951HostAreaPackedPixelWrite(&stLdImgInfo, &stAreaImgInfo);
+	IT8951DisplayArea(0, 0, gstI80DevInfo.usPanelW, gstI80DevInfo.usPanelH, 0);
+}
+
 void IT8951_BMP_Example(uint32_t x, uint32_t y,char *path)
 {
 	IT8951LdImgInfo stLdImgInfo;
 	IT8951AreaImgInfo stAreaImgInfo;
-	
+
 	EPD_Clear(0xff);
-	
-	//ÏÔÊ¾Í¼Ïñ
+
+	//ï¿½ï¿½Ê¾Í¼ï¿½ï¿½
 	Show_bmp(x,y,path);
 
 	IT8951WaitForDisplayReady();
