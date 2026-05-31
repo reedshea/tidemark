@@ -810,10 +810,41 @@ void IT8951_BMP_Example(uint32_t x, uint32_t y,char *path)
 
 	//Load Image from Host to IT8951 Image Buffer
 	IT8951HostAreaPackedPixelWrite(&stLdImgInfo, &stAreaImgInfo);//Display function 2
-	//Mode 3 = GL16: full 16-level grayscale WITHOUT the GC16 black/white flash,
-	//so routine refreshes are non-flashing. The nightly INIT clear (mode 0, via
-	//IT8951_Clear_Refresh) periodically resets any ghosting GL16 leaves behind.
-	IT8951DisplayArea(0,0, gstI80DevInfo.usPanelW, gstI80DevInfo.usPanelH, 3);
+	//Mode 2 = GC16: full crisp 16-level grayscale (smooth text/curve edges).
+	//Used for full-screen refreshes; routine updates use the partial path below.
+	IT8951DisplayArea(0,0, gstI80DevInfo.usPanelW, gstI80DevInfo.usPanelH, 2);
+}
+
+// Load the BMP into the panel image buffer but refresh ONLY the given rectangle
+// with GC16. Unchanged areas keep their last (crisp) state, so the GC16 flash is
+// confined to the box that actually changed between frames.
+void IT8951_Display_BMP_Area(char *path, uint16_t x, uint16_t y,
+                             uint16_t w, uint16_t h)
+{
+	IT8951LdImgInfo stLdImgInfo;
+	IT8951AreaImgInfo stAreaImgInfo;
+
+	Show_bmp(0, 0, path);              // decode the full BMP into gpFrameBuf
+
+	IT8951WaitForDisplayReady();
+
+	stLdImgInfo.ulStartFBAddr    = (uint32_t)gpFrameBuf;
+	stLdImgInfo.usEndianType     = IT8951_LDIMG_L_ENDIAN;
+	stLdImgInfo.usPixelFormat    = IT8951_8BPP;
+	stLdImgInfo.usRotate         = IT8951_ROTATE_0;
+	stLdImgInfo.ulImgBufBaseAddr = gulImgBufAddr;
+	stAreaImgInfo.usX      = 0;
+	stAreaImgInfo.usY      = 0;
+	stAreaImgInfo.usWidth  = gstI80DevInfo.usPanelW;
+	stAreaImgInfo.usHeight = gstI80DevInfo.usPanelH;
+
+	// Push the whole new image to the controller, then repaint only the box.
+	IT8951HostAreaPackedPixelWrite(&stLdImgInfo, &stAreaImgInfo);
+	if (x >= gstI80DevInfo.usPanelW) x = 0;
+	if (y >= gstI80DevInfo.usPanelH) y = 0;
+	if (x + w > gstI80DevInfo.usPanelW) w = gstI80DevInfo.usPanelW - x;
+	if (y + h > gstI80DevInfo.usPanelH) h = gstI80DevInfo.usPanelH - y;
+	IT8951DisplayArea(x, y, w, h, 2);
 }
 
 //-----------------------------------------------------------

@@ -15,11 +15,45 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from PIL import Image, ImageChops
+
 import config
 from data.tide import predict_series, extreme_range
 from data.sun import daylight_intervals
 from data import moon as moonmod
 from render import ribbon
+
+
+def _write_refresh_box(img, output):
+    """Compare this frame with the previous one and write a sidecar telling the
+    C host what to repaint: "full", "none", or "x y w h" (the changed box,
+    padded and 8px-aligned). Lets the panel refresh only what changed."""
+    prev_path = output + ".prev"
+    box_path = output + ".box"
+    region = "full"
+    try:
+        if os.path.exists(prev_path):
+            prev = Image.open(prev_path).convert("L")
+            if prev.size == img.size:
+                bbox = ImageChops.difference(img, prev).getbbox()
+                if bbox is None:
+                    region = "none"
+                else:
+                    l, t, r, b = bbox
+                    l = max(0, l - 8) & ~7
+                    t = max(0, t - 8) & ~7
+                    r = min(img.width, (r + 8 + 7) & ~7)
+                    b = min(img.height, (b + 8 + 7) & ~7)
+                    w, h = r - l, b - t
+                    if w * h > 0.5 * img.width * img.height:
+                        region = "full"
+                    else:
+                        region = f"{l} {t} {w} {h}"
+    except Exception:
+        region = "full"
+    with open(box_path, "w") as fh:
+        fh.write(region)
+    img.save(prev_path, "BMP")
 
 
 def build_context(now=None):
@@ -100,6 +134,7 @@ def main():
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
     img.save(args.output, "BMP")
+    _write_refresh_box(img, args.output)
     nh = ctx["series"].next_high(ctx["now"])
     if nh:
         print(f"Next high tide: {nh.time.strftime('%a %-I:%M %p')} "
