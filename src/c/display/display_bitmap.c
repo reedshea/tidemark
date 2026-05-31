@@ -97,55 +97,20 @@ bool display_bitmap(const char* file_path) {
 #else
     // For Raspberry Pi, use the IT8951 library's BMP function
     #ifndef PLATFORM_MACOS
-    // The renderer writes a sidecar "<bmp>.box" naming what changed since the
-    // last frame: "full", "none", or "x y w h". We refresh only that region
-    // (crisp GC16), so the flash stays small. Once a night (first run in the
-    // 3am hour) force a full INIT clear to reset any accumulated ghosting.
-    int rx = 0, ry = 0, rw = 0, rh = 0;
-    int is_partial = 0, is_none = 0;   // default: full refresh
-    char box_path[600];
-    snprintf(box_path, sizeof(box_path), "%s.box", file_path);
-    FILE *bf = fopen(box_path, "r");
-    if (bf) {
-        char line[64] = {0};
-        if (fgets(line, sizeof(line), bf)) {
-            if (strncmp(line, "none", 4) == 0) {
-                is_none = 1;
-            } else if (strncmp(line, "full", 4) != 0
-                       && sscanf(line, "%d %d %d %d", &rx, &ry, &rw, &rh) == 4
-                       && rw > 0 && rh > 0) {
-                is_partial = 1;
-            }
-        }
-        fclose(bf);
-    }
-
-    // A flashing full INIT clear is the only thing that fully wipes ghosting.
-    // Run it the first cycle of every 4th hour (00,04,08,...20 — a few brief
-    // flashes a day), and on demand via TIDEMARK_FULL_CLEAR (used after a
-    // deploy to reset to a clean baseline).
+    // Every refresh is a full crisp GC16 repaint — self-cleaning, so ghosting
+    // doesn't accumulate. Updates are infrequent (the timer), so the brief GC16
+    // flash is rarely caught. Once a day (the 3am cycle) a full INIT clear
+    // deep-cleans any residual ghosting; TIDEMARK_FULL_CLEAR forces one on
+    // demand (used right after a deploy to reset to a clean baseline).
     time_t now_t = time(NULL);
     struct tm *lt = localtime(&now_t);
-    int periodic = (lt && lt->tm_min < 5 && (lt->tm_hour % 4) == 0);
-    int forced = (getenv("TIDEMARK_FULL_CLEAR") != NULL);
-    if (periodic || forced) {
+    int daily = (lt && lt->tm_hour == 3 && lt->tm_min < 30);
+    if (daily || getenv("TIDEMARK_FULL_CLEAR")) {
         printf("Full INIT-mode clear to reset ghosting...\n");
         IT8951_Clear_Refresh();
-        is_partial = 0;
-        is_none = 0;   // always redraw fully after the clear
     }
-
-    if (is_none) {
-        printf("No change since last frame; skipping refresh.\n");
-    } else if (is_partial) {
-        printf("Partial GC16 refresh of changed box %d,%d %dx%d...\n",
-               rx, ry, rw, rh);
-        IT8951_Display_BMP_Area((char*)file_path, (uint16_t)rx, (uint16_t)ry,
-                                (uint16_t)rw, (uint16_t)rh);
-    } else {
-        printf("Full GC16 refresh using IT8951_BMP_Example...\n");
-        IT8951_BMP_Example(0, 0, (char*)file_path);
-    }
+    printf("Full GC16 refresh using IT8951_BMP_Example...\n");
+    IT8951_BMP_Example(0, 0, (char*)file_path);
     printf("Successfully displayed bitmap on e-ink display\n");
     #else
     printf("E-ink display not available on macOS. This code should not be reached.\n");

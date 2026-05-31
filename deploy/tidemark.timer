@@ -1,12 +1,14 @@
 [Unit]
-Description=Refresh the Tidemark display every 5 minutes
+Description=Refresh the Tidemark display every 30 minutes
 
 [Timer]
-# Fire on the wall clock at :00, :05, :10, ... so the "now" marker stays current.
-OnCalendar=*:0/5
+# Fire on the wall clock at :00 and :30. Each refresh is a full crisp GC16
+# repaint (briefly flashes), so we keep the cadence low — the panel stays sharp
+# and ghost-free and the flash is rarely caught.
+OnCalendar=*:0/30
 # Also refresh shortly after boot so the panel isn't stale on startup.
 OnBootSec=30s
-AccuracySec=10s
+AccuracySec=20s
 Persistent=false
 
 [Install]
