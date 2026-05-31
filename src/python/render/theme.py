@@ -57,12 +57,19 @@ _FONT_DIRS = [
 
 _FONT_FILES = {
     "serif": ["DejaVuSerif.ttf", "LiberationSerif-Regular.ttf", "Georgia.ttf"],
-    "serif_bold": ["DejaVuSerif-Bold.ttf", "LiberationSerif-Bold.ttf"],
+    "serif_bold": ["DejaVuSerif-Bold.ttf", "LiberationSerif-Bold.ttf",
+                   "Georgia Bold.ttf"],
     "sans": ["DejaVuSans.ttf", "LiberationSans-Regular.ttf", "Arial.ttf"],
-    "sans_bold": ["DejaVuSans-Bold.ttf", "LiberationSans-Bold.ttf"],
+    "sans_bold": ["DejaVuSans-Bold.ttf", "LiberationSans-Bold.ttf",
+                  "Arial Bold.ttf"],
 }
 
 _cache = {}
+
+# Smallest type we ever render. Anything requested below this is bumped up so
+# every label stays legible at panel viewing distance. Tune this one knob to
+# raise/lower the floor for all secondary text.
+FONT_MIN = 44
 
 
 def font(style, size):

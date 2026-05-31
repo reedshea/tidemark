@@ -52,6 +52,7 @@ class _Canvas:
                      outline=outline, width=width)
 
     def text(self, xy, s, fill, style, size, anchor="la"):
+        size = max(size, T.FONT_MIN)  # enforce the legibility floor (logical pt)
         self.d.text((_s(xy[0]), _s(xy[1])), s, fill=fill,
                     font=T.font(style, _s(size)), anchor=anchor)
 
@@ -140,6 +141,16 @@ def _draw_top_axis(c, ctx, X):
     start, end = ctx["start"], ctx["end"]
     now_x = X(ctx["now"])
     bottom = T.BAND_TOP + T.BAND_H
+    # Midnights carry a weekday name drawn to their right; reserve that slot so
+    # the following hour label (e.g. "3a") doesn't collide with the name.
+    midnights = []
+    t = start.replace(minute=0, second=0, microsecond=0)
+    while t <= end:
+        if t.hour == 0:
+            midnights.append(X(t))
+        t += datetime.timedelta(hours=1)
+    NAME_RESERVE = 180  # px to the right of midnight the weekday name occupies
+
     t = start.replace(minute=0, second=0, microsecond=0)
     while t < start or t.hour % 3 != 0:
         t += datetime.timedelta(hours=1)
@@ -148,9 +159,11 @@ def _draw_top_axis(c, ctx, X):
         if t.hour == 0:
             # new day: faint full-height divider + weekday name to its right
             c.line([(x, T.TICK_Y), (x, bottom)], T.FAINT, 1)
-            c.text((x + 10, T.TIME_LABEL_Y), t.strftime("%A"), T.INK_SOFT,
+            c.text((x + 12, T.TIME_LABEL_Y), t.strftime("%A"), T.INK_SOFT,
                    "serif", 26, anchor="lb")
-        elif abs(x - now_x) >= 48:  # let the 'now' label own its slot
+        elif abs(x - now_x) >= 48 \
+                and not any(0 < (x - mx) < NAME_RESERVE for mx in midnights):
+            # skip if 'now' owns this slot or a weekday name sits just left of it
             c.line([(x, T.TICK_Y), (x, T.TICK_Y + 7)], T.GRID, 1)
             # 9a / noon / 3p — the daytime hours — a touch darker
             daytime = 8 <= t.hour <= 16
@@ -218,10 +231,23 @@ def _draw_moon(c, ctx, X):
                 continue
             _moon_glyph(c, x, moon_y(a1), 22, frac, illum)
             if best is None or a1 > best[1]:
-                best = (x, a1, moon_y(a1))
+                best = (x, a1, moon_y(a1), ti)
     if best is not None:
-        c.text((best[0] + 34, best[2]), moon["name"], T.INK_SOFT, "serif", 22,
-               anchor="lm")
+        # Phase is shown by the glyph itself; label the moonrise time instead.
+        # Prefer the rise leading up to this transit; fall back to next rise,
+        # then to the next moonset if the moon never rises in the window.
+        rises = sorted(t for (k, t) in moon["events"] if k == "moonrise")
+        transit_t = best[3]
+        prior = [t for t in rises if t <= transit_t]
+        rise = prior[-1] if prior else (rises[0] if rises else None)
+        if rise is not None:
+            label = f"moonrise {_fmt_time(rise)}"
+        else:
+            sets = sorted(t for (k, t) in moon["events"] if k == "moonset")
+            label = f"moonset {_fmt_time(sets[0])}" if sets else None
+        if label:
+            c.text((best[0] + 34, best[2]), label, T.INK_SOFT, "serif", 22,
+                   anchor="lm")
 
 
 def _draw_curve(c, series, X, Y, now):
