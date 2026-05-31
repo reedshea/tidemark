@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """
-The Tidemark ribbon: a clean, Tufte-style tide chart for e-ink.
+The Tidemark ribbon: a framed, nautical-chart-style tide piece for e-ink.
 
-Layout: the time axis runs minimally along the top; the tide line is the hero;
-the moon rides as a single glyph at its transit (high point) in a thin strip
-near the top, so you can see at a glance whether it peaks by day or by night;
-a slim day/night band sits at the bottom. Rendered at 2x and downsampled so
-lines are smooth anti-aliased grays rather than jagged 1-bit edges.
+Composition (chosen to read as deliberate wall art and to survive e-ink):
+  - a hairline border inset from the panel edge, like a matted print;
+  - a sky region up top holding the weekday labels and the moon at its transit,
+    with hard-edged night bands (no smudgy gradients);
+  - a horizon baseline; the tide curve is the surface of the sea;
+  - the sea is "engraved" with horizontal hairlines below the curve — depth and
+    texture with pure black-on-white lines (no mid-gray fills that band/ghost).
+
+Rendered at 2x and downsampled so the curve and hairlines are smooth.
 """
 
 import math
@@ -81,94 +85,194 @@ def render(ctx):
         return T.PLOT_LEFT + (dt - start).total_seconds() / span_s \
             * (T.PLOT_RIGHT - T.PLOT_LEFT)
 
-    # Fixed scale from the station's annual extremes: the annual low sits near
-    # the bottom of the screen and the curve fills upward, with headroom up top
-    # for the peak labels. Mean tide level is marked by the mid line.
+    # Fixed scale from the station's annual extremes: the annual low sits at the
+    # horizon baseline and the curve fills upward, with headroom for peak labels.
     sc = ctx["scale"]
-    mid = to_disp(sc["mid"])
     lo, hi = to_disp(sc["lo"]), to_disp(sc["hi"])
     rng = hi - lo
-    y_lo, y_hi = lo - rng * 0.03, hi + rng * 0.12
+    y_lo, y_hi = lo - rng * 0.02, hi + rng * 0.10
 
-    def Yv(v):
+    def Y(h_m):
+        v = to_disp(h_m)
         return T.PLOT_BOTTOM - (v - y_lo) / (y_hi - y_lo) \
             * (T.PLOT_BOTTOM - T.PLOT_TOP)
 
-    def Y(h_m):
-        return Yv(to_disp(h_m))
+    curve = [(X(t), Y(h)) for t, h in zip(series.times, series.heights)]
 
-    _draw_daynight(c, ctx, X)
-    _draw_top_axis(c, ctx, X)
-    _draw_midline(c, Yv, mid)
+    _draw_night_bands(c, ctx, X, curve)
+    _draw_engraved_sea(c, curve, ctx, X)
+    _draw_title_and_axis(c, ctx, X)
     _draw_moon(c, ctx, X)
-    _draw_curve(c, series, X, Y, now)
+    _draw_curve(c, curve, X, now)
     _draw_extrema(c, series, X, Y, now)
     _draw_now(c, series, X, Y, now)
     if ctx.get("weather") is not None:
         _draw_temperature(c, ctx, X)
+    _draw_frame(c)
 
     return c.finish()
 
 
-def _sky_shade(alt):
-    """Map a sun altitude (deg) to a sky gray: white at/above the horizon,
-    darkening to NIGHT_SKY once the sun is TWILIGHT_SPAN below it."""
-    if alt >= 0:
-        return T.PAPER
-    f = min(1.0, -alt / T.TWILIGHT_SPAN)   # 0 at horizon → 1 at full night
-    return int(round(T.PAPER + f * (T.NIGHT_SKY - T.PAPER)))
+def _night_spans(ctx):
+    """Night intervals (as datetimes) within [start, end] — the complement of
+    the daylight intervals."""
+    start, end = ctx["start"], ctx["end"]
+    spans = []
+    cur = start
+    for sr, ss in sorted(ctx["daylight"]):
+        if ss <= start or sr >= end:
+            continue
+        if sr > cur:
+            spans.append((max(start, cur), min(sr, end)))
+        cur = max(cur, ss)
+    if cur < end:
+        spans.append((cur, end))
+    return spans
 
 
-def _draw_daynight(c, ctx, X):
-    """A day/night gradient behind the lower chart: each column's gray tracks
-    the sun's altitude — white by day, gray through dawn/dusk to its darkest at
-    solar midnight. It ends ~2/3 of the way up so the moon and day label ride on
-    clean white above it. Everything else is drawn on top."""
+def _sky_mask(curve):
+    """Mask (2x) of the sky region: everything inside the plot above the tide
+    curve. Used to clip the night bands so they never cover the sea."""
+    mask = Image.new("L", (_s(T.WIDTH), _s(T.HEIGHT)), 0)
+    md = ImageDraw.Draw(mask)
+    poly = [(_s(T.PLOT_LEFT), _s(T.SKY_TOP))]
+    poly += [(_s(x), _s(yy)) for x, yy in curve]
+    poly += [(_s(T.PLOT_RIGHT), _s(T.SKY_TOP))]
+    md.polygon(poly, fill=255)
+    return mask
+
+
+def _draw_night_bands(c, ctx, X, curve):
+    """Night as crisp rectangles in the SKY only — hard edges, clipped to above
+    the tide curve so the sea engraving below stays clean. The night sea is
+    handled separately by darkening its hairlines."""
+    band = Image.new("L", (_s(T.WIDTH), _s(T.HEIGHT)), T.PAPER)
+    bd = ImageDraw.Draw(band)
+    drew = False
+    for a, b in _night_spans(ctx):
+        x0 = max(T.PLOT_LEFT, X(a))
+        x1 = min(T.PLOT_RIGHT, X(b))
+        if x1 > x0:
+            bd.rectangle([_s(x0), _s(T.SKY_TOP), _s(x1), _s(T.HORIZON_Y)],
+                         fill=T.NIGHT_SKY)
+            drew = True
+    if drew:
+        c.img.paste(band, (0, 0), _sky_mask(curve))
+        c.d = ImageDraw.Draw(c.img)
+
+
+def _draw_engraved_sea(c, curve, ctx, X):
+    """Fill below the tide curve with horizontal hairlines (an engraving),
+    clipped to the area under the curve via a polygon mask. Night water uses a
+    slightly darker line so day and night read differently without flat fills.
+    Pure black-on-white hairlines: ideal for e-ink."""
+    nights = _night_spans(ctx)
+
+    def is_night(px):
+        for a, b in nights:
+            if X(a) <= px <= X(b):
+                return True
+        return False
+
+    full = Image.new("L", (_s(T.WIDTH), _s(T.HEIGHT)), T.PAPER)
+    fd = ImageDraw.Draw(full)
+    y = T.PLOT_TOP
+    # split each hairline at day/night boundaries so night sea is darker
+    bounds = [T.PLOT_LEFT]
+    for a, b in nights:
+        bounds += [X(a), X(b)]
+    bounds.append(T.PLOT_RIGHT)
+    bounds = sorted(min(max(x, T.PLOT_LEFT), T.PLOT_RIGHT) for x in bounds)
+    while y <= T.HORIZON_Y:
+        for i in range(len(bounds) - 1):
+            x0, x1 = bounds[i], bounds[i + 1]
+            if x1 - x0 < 0.5:
+                continue
+            shade = T.NIGHT_SEA if is_night((x0 + x1) / 2) else T.SEA_LINE
+            fd.line([(_s(x0), _s(y)), (_s(x1), _s(y))], fill=shade,
+                    width=max(1, _s(1)))
+        y += T.SEA_LINE_GAP
+
+    mask = Image.new("L", (_s(T.WIDTH), _s(T.HEIGHT)), 0)
+    md = ImageDraw.Draw(mask)
+    poly = [(_s(T.PLOT_LEFT), _s(T.HORIZON_Y))]
+    poly += [(_s(x), _s(yy)) for x, yy in curve]
+    poly += [(_s(T.PLOT_RIGHT), _s(T.HORIZON_Y))]
+    md.polygon(poly, fill=255)
+
+    c.img.paste(full, (0, 0), mask)
+    c.d = ImageDraw.Draw(c.img)
+    # horizon baseline
+    c.line([(T.PLOT_LEFT, T.HORIZON_Y), (T.PLOT_RIGHT, T.HORIZON_Y)], T.INK, 1)
+
+
+def _draw_title_and_axis(c, ctx, X):
+    """Top chart furniture, in two rows:
+      1) title row: each day's name + date, centered over that day's span;
+      2) axis row: tick marks at 3h (short) / 6h (long) / midnight (day), plus
+         sunrise / noon / sunset times labeled beneath their ticks.
+    """
+    start, end = ctx["start"], ctx["end"]
     loc = ctx["location"]
-    start, end = ctx["start"], ctx["end"]
-    span_s = (end - start).total_seconds()
-    top, bot = round(T.HEIGHT / 3), T.HEIGHT
-    n = int(T.PLOT_RIGHT - T.PLOT_LEFT)        # ~one sample per logical pixel
-    w = (T.PLOT_RIGHT - T.PLOT_LEFT) / n
-    for i in range(n):
-        t = start + datetime.timedelta(seconds=span_s * (i + 0.5) / n)
-        shade = _sky_shade(sun_altitude(t, loc["latitude"], loc["longitude"]))
-        x0 = T.PLOT_LEFT + i * w
-        c.rect((x0, top, x0 + w + 1, bot), fill=shade)
+    tz = start.tzinfo
 
+    # --- title row: day + date centered on each calendar day's visible span ---
+    day = start.replace(hour=0, minute=0, second=0, microsecond=0)
+    while day <= end:
+        d0, d1 = day, day + datetime.timedelta(days=1)
+        vis0, vis1 = max(d0, start), min(d1, end)
+        if vis1 > vis0:
+            xmid = (X(vis0) + X(vis1)) / 2
+            if (X(vis1) - X(vis0)) > 200:  # only label days with room
+                c.text((xmid, T.TITLE_Y), day.strftime("%A"), T.INK,
+                       "serif", 40, anchor="mb")
+                c.text((xmid, T.DATE_Y), day.strftime("%B %-d"),
+                       T.INK_SOFT, "serif", 24, anchor="mb")
+        day = d1
 
-def _draw_top_axis(c, ctx, X):
-    """Day labels only: each day's name centered at its local noon, sitting in
-    the daytime (white) middle of the sky strip. No hour ticks — the gradient
-    shows day/night and tide peaks carry their own times."""
-    start, end = ctx["start"], ctx["end"]
-    y = (T.MOON_TOP + T.MOON_BOT) / 2  # vertical middle of the sky strip
-    noon = start.replace(hour=12, minute=0, second=0, microsecond=0)
-    while noon < start:
-        noon += datetime.timedelta(days=1)
-    while noon <= end:
-        x = X(noon)
-        if T.PLOT_LEFT <= x <= T.PLOT_RIGHT:
-            c.text((x, y), noon.strftime("%A"), T.INK_SOFT, "serif", 26,
-                   anchor="mm")
-        noon += datetime.timedelta(days=1)
+    # --- axis row: ticks at 3 / 6 / 12 hour increments ---
+    yt = T.AXIS_TICK_Y
+    c.line([(T.PLOT_LEFT, yt), (T.PLOT_RIGHT, yt)], T.GRID, 1)
+    t = start.replace(minute=0, second=0, microsecond=0)
+    while t < start or t.hour % 3 != 0:
+        t += datetime.timedelta(hours=1)
+    while t <= end:
+        x = X(t)
+        if t.hour == 0:
+            c.line([(x, yt - T.AXIS_TICK_LONG), (x, yt + T.AXIS_TICK_LONG)],
+                   T.INK_SOFT, 1)            # midnight / day boundary
+        elif t.hour % 6 == 0:
+            c.line([(x, yt), (x, yt + T.AXIS_TICK_LONG)], T.GRID, 1)
+        else:
+            c.line([(x, yt), (x, yt + T.AXIS_TICK_SHORT)], T.GRID, 1)
+        t += datetime.timedelta(hours=3)
 
-
-def _draw_midline(c, Yv, mid):
-    """A dashed reference line at mean tide level — roughly halfway between high
-    and low. Dashed and mid-gray so it reads over both the bright daytime and
-    the dark night portions of the gradient. Below it reads as low ('negative')
-    local relative level, not absolute height."""
-    y = Yv(mid)
-    dash, gap = 16, 12
-    x = T.PLOT_LEFT
-    while x < T.PLOT_RIGHT:
-        c.line([(x, y), (min(x + dash, T.PLOT_RIGHT), y)], T.INK_SOFT, 1)
-        x += dash + gap
+    # --- sun event ticks + times: sunrise, solar noon, sunset per day ---
+    from data.sun import sun_events
+    d = start.astimezone(tz).date()
+    last = end.astimezone(tz).date()
+    while d <= last:
+        ev = sun_events(d, loc["latitude"], loc["longitude"], tz)
+        sr, ss = ev["sunrise"], ev["sunset"]
+        marks = []
+        if sr:
+            marks.append(("↑ " + _fmt_time(sr), sr))   # sunrise
+        if sr and ss:
+            noon_t = sr + (ss - sr) / 2                       # solar noon
+            marks.append(("· " + _fmt_time(noon_t), noon_t))
+        if ss:
+            marks.append(("↓ " + _fmt_time(ss), ss))    # sunset
+        for label, when in marks:
+            x = X(when)
+            if T.PLOT_LEFT + 30 <= x <= T.PLOT_RIGHT - 30:
+                c.line([(x, yt), (x, yt + T.AXIS_TICK_LONG + 4)], T.INK, 1)
+                c.text((x, T.SUN_LABEL_Y), label, T.INK_SOFT, "sans", 20,
+                       anchor="ma")
+        d += datetime.timedelta(days=1)
 
 
 def _moon_glyph(c, cx, cy, r, frac, illum):
-    """Draw a true-phase moon: dark disk with the illuminated lune in paper."""
+    """True-phase moon: dark disk with the illuminated lune in paper."""
     c.dot(cx, cy, r, fill=T.INK_SOFT)
     waxing = frac < 0.5
     rx = r * (1 - 2 * illum)
@@ -188,33 +292,30 @@ def _moon_glyph(c, cx, cy, r, frac, illum):
 
 
 def _draw_moon(c, ctx, X):
-    """Place the moon at its transit (highest point): x = transit time, y by
-    altitude. Sitting over a day or night column answers 'do we see it by day
-    or night?'. No arc, no rise/set clutter."""
+    """Moon at each transit (highest point): x = transit time, y by altitude.
+    Sitting over a night band vs. clear sky tells you day-moon or night-moon."""
     moon = ctx["moon"]
     track = moon["track"]
     frac, illum = moon["frac"], moon["illum"]
+    r = 40
 
     def moon_y(alt):
         a = max(0.0, min(alt, T.ALT_SCALE))
-        return T.MOON_BOT - a / T.ALT_SCALE * (T.MOON_BOT - T.MOON_TOP)
+        return T.MOON_STRIP_BOT - a / T.ALT_SCALE \
+            * (T.MOON_STRIP_BOT - T.MOON_STRIP_TOP)
 
-    # transits = interior local maxima of altitude that are above the horizon
-    r = 44  # glyph radius (2x): the moon is a prominent element now
     for i in range(1, len(track) - 1):
         (_, a0), (ti, a1), (_, a2) = track[i - 1], track[i], track[i + 1]
         if a1 > 0 and a1 >= a0 and a1 >= a2:
             x = X(ti)
-            if x < T.PLOT_LEFT + r or x > T.PLOT_RIGHT - r:
-                continue
-            _moon_glyph(c, x, moon_y(a1), r, frac, illum)
+            if T.PLOT_LEFT + r < x < T.PLOT_RIGHT - r:
+                _moon_glyph(c, x, moon_y(a1), r, frac, illum)
 
 
-def _draw_curve(c, series, X, Y, now):
-    pts = [(X(t), Y(h)) for t, h in zip(series.times, series.heights)]
+def _draw_curve(c, curve, X, now):
     nx = X(now)
-    past = [p for p in pts if p[0] <= nx]
-    future = [p for p in pts if p[0] >= nx]
+    past = [p for p in curve if p[0] <= nx]
+    future = [p for p in curve if p[0] >= nx]
     if len(past) > 1:
         c.line(past, T.GRID, 3)
     if len(future) > 1:
@@ -222,8 +323,7 @@ def _draw_curve(c, series, X, Y, now):
 
 
 def _draw_extrema(c, series, X, Y, now):
-    """Mark highs and lows. Highs get a time label (the thing you plan around);
-    lows are just a small open dot. No height labels — the y-axis is enough."""
+    """Highs get a time label above the crest; lows are bare open dots."""
     next_high = series.next_high(now)
     for e in series.extrema:
         x, y = X(e.time), Y(e.height)
@@ -234,7 +334,7 @@ def _draw_extrema(c, series, X, Y, now):
         if e.kind == "H":
             is_next = (e is next_high)
             c.dot(x, y, 6, fill=ink)
-            c.text((x, y - 18), _fmt_time(e.time), ink,
+            c.text((x, y - 26), _fmt_time(e.time), ink,
                    "sans_bold" if is_next else "sans", 28, anchor="md")
         else:
             c.dot(x, y, 5, fill=T.PAPER, outline=ink, width=2)
@@ -245,14 +345,15 @@ def _draw_now(c, series, X, Y, now):
         return
     x = X(now)
     y = Y(series.height_at(now))
-    c.line([(x, T.TICK_Y), (x, T.PLOT_BOTTOM)], T.INK_SOFT, 1)
+    # a short tick from the horizon up to the marker — no full-height spike
+    c.line([(x, y), (x, T.HORIZON_Y)], T.INK_SOFT, 1)
     c.dot(x, y, 7, fill=T.INK)
     c.dot(x, y, 12, fill=None, outline=T.PAPER, width=3)
     c.dot(x, y, 12, fill=None, outline=T.INK, width=1)
 
 
 def _draw_temperature(c, ctx, X):
-    """Optional air-temperature line along the bottom (no cloud strip)."""
+    """Optional air-temperature line along the bottom of the sky region."""
     wx = ctx["weather"]
     start, end = ctx["start"], ctx["end"]
     hours = []
@@ -267,13 +368,12 @@ def _draw_temperature(c, ctx, X):
     tmin, tmax = min(vals), max(vals)
     pad = max(2.0, (tmax - tmin) * 0.25)
     span = (tmax + pad) - (tmin - pad)
+    top, bot = T.MOON_STRIP_TOP, T.MOON_STRIP_BOT
 
     def ty(v):
-        return T.TEMP_BOT - (v - (tmin - pad)) / span * (T.TEMP_BOT - T.TEMP_TOP)
+        return bot - (v - (tmin - pad)) / span * (bot - top)
 
     c.line([(x, ty(v)) for x, v in pts], T.INK_SOFT, 2)
-    c.text((T.PLOT_LEFT - 16, (T.TEMP_TOP + T.TEMP_BOT) / 2), "°F", T.INK_SOFT,
-           "sans", 22, anchor="rm")
     for label_v, want_max in ((tmax, True), (tmin, False)):
         x, v = next(p for p in pts if p[1] == label_v)
         y = ty(v)
@@ -282,3 +382,7 @@ def _draw_temperature(c, ctx, X):
                T.INK_SOFT, "sans", 20, anchor="md" if want_max else "ma")
 
 
+def _draw_frame(c):
+    """A hairline border inset from the panel edge — the mat around the print."""
+    c.rect((T.MARGIN, T.MARGIN, T.WIDTH - T.MARGIN, T.HEIGHT - T.MARGIN),
+           outline=T.BORDER, width=2)
