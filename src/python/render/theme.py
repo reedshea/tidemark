@@ -56,6 +56,10 @@ SEA_LINE_GAP = 13         # vertical spacing of engraved sea hairlines (logical)
 FOOTER_Y = HEIGHT - MARGIN - 8
 
 _FONT_DIRS = [
+    # ET Book (Tufte's Bembo), bundled with the repo so it works offline on the
+    # Pi; searched first so the serif styles resolve to it.
+    os.path.join(os.path.dirname(__file__), "..", "..", "..",
+                 "assets", "fonts"),
     "/usr/share/fonts/truetype/dejavu",
     "/usr/share/fonts/truetype/liberation",
     "/Library/Fonts",
@@ -63,9 +67,11 @@ _FONT_DIRS = [
 ]
 
 _FONT_FILES = {
-    "serif": ["DejaVuSerif.ttf", "LiberationSerif-Regular.ttf", "Georgia.ttf"],
-    "serif_bold": ["DejaVuSerif-Bold.ttf", "LiberationSerif-Bold.ttf",
-                   "Georgia Bold.ttf"],
+    # Tufte's ET Book for the serif voice, DejaVu/Liberation as fallbacks.
+    "serif": ["roman.ttf", "DejaVuSerif.ttf", "LiberationSerif-Regular.ttf"],
+    "serif_bold": ["semibold.ttf", "bold.ttf", "DejaVuSerif-Bold.ttf",
+                   "LiberationSerif-Bold.ttf"],
+    "serif_italic": ["italic.ttf", "DejaVuSerif-Italic.ttf"],
     "sans": ["DejaVuSans.ttf", "LiberationSans-Regular.ttf", "Arial.ttf"],
     "sans_bold": ["DejaVuSans-Bold.ttf", "LiberationSans-Bold.ttf",
                   "Arial Bold.ttf"],
