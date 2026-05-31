@@ -230,25 +230,10 @@ def _draw_title_and_axis(c, ctx, X):
                        T.INK_SOFT, "serif", 24, anchor="mb")
         day = d1
 
-    # --- axis row: ticks at 3 / 6 / 12 hour increments ---
-    yt = T.AXIS_TICK_Y
-    c.line([(T.PLOT_LEFT, yt), (T.PLOT_RIGHT, yt)], T.GRID, 1)
-    t = start.replace(minute=0, second=0, microsecond=0)
-    while t < start or t.hour % 3 != 0:
-        t += datetime.timedelta(hours=1)
-    while t <= end:
-        x = X(t)
-        if t.hour == 0:
-            c.line([(x, yt - T.AXIS_TICK_LONG), (x, yt + T.AXIS_TICK_LONG)],
-                   T.INK_SOFT, 1)            # midnight / day boundary
-        elif t.hour % 6 == 0:
-            c.line([(x, yt), (x, yt + T.AXIS_TICK_LONG)], T.GRID, 1)
-        else:
-            c.line([(x, yt), (x, yt + T.AXIS_TICK_SHORT)], T.GRID, 1)
-        t += datetime.timedelta(hours=3)
-
-    # --- sun event ticks + times: sunrise, solar noon, sunset per day ---
+    # --- sun event times row (above the axis): sunrise, solar noon, sunset ---
     from data.sun import sun_events
+    yt = T.AXIS_TICK_Y                # axis line; also the top of the night box
+    sun_marks = []                    # (x, when) to also tick on the axis
     d = start.astimezone(tz).date()
     last = end.astimezone(tz).date()
     while d <= last:
@@ -265,10 +250,28 @@ def _draw_title_and_axis(c, ctx, X):
         for label, when in marks:
             x = X(when)
             if T.PLOT_LEFT + 30 <= x <= T.PLOT_RIGHT - 30:
-                c.line([(x, yt), (x, yt + T.AXIS_TICK_LONG + 4)], T.INK, 1)
                 c.text((x, T.SUN_LABEL_Y), label, T.INK_SOFT, "sans", 20,
-                       anchor="ma")
+                       anchor="mb")
+                sun_marks.append(x)
         d += datetime.timedelta(days=1)
+
+    # --- axis line + ticks at 3 / 6 / 12 hour increments (ticks hang down) ---
+    c.line([(T.PLOT_LEFT, yt), (T.PLOT_RIGHT, yt)], T.INK_SOFT, 1)
+    t = start.replace(minute=0, second=0, microsecond=0)
+    while t < start or t.hour % 3 != 0:
+        t += datetime.timedelta(hours=1)
+    while t <= end:
+        x = X(t)
+        if t.hour == 0:
+            c.line([(x, yt), (x, yt + T.AXIS_TICK_LONG + 6)], T.INK_SOFT, 1)
+        elif t.hour % 6 == 0:
+            c.line([(x, yt), (x, yt + T.AXIS_TICK_LONG)], T.GRID, 1)
+        else:
+            c.line([(x, yt), (x, yt + T.AXIS_TICK_SHORT)], T.GRID, 1)
+        t += datetime.timedelta(hours=3)
+    # sun-event ticks: longer and darker so they stand out from hour ticks
+    for x in sun_marks:
+        c.line([(x, yt), (x, yt + T.AXIS_TICK_LONG + 6)], T.INK, 1)
 
 
 def _moon_glyph(c, cx, cy, r, frac, illum):

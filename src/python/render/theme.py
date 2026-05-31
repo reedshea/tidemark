@@ -35,19 +35,20 @@ PLOT_RIGHT = WIDTH - MARGIN - PAD
 
 # Top "chart furniture": a title row (day + date) and an axis row below it
 # carrying tick marks and sunrise / noon / sunset times.
-TITLE_Y = MARGIN + PAD            # baseline of the big day name
-DATE_Y = TITLE_Y + 36             # baseline of the smaller date line
-AXIS_TICK_Y = DATE_Y + 44         # where the time-axis ticks sit
+TITLE_Y = MARGIN + 34             # baseline of the big day name
+DATE_Y = TITLE_Y + 38             # baseline of the smaller date line
+SUN_LABEL_Y = DATE_Y + 56         # sunrise/noon/sunset times row
+AXIS_TICK_Y = SUN_LABEL_Y + 18    # x-axis line + ticks; also the night-box top
 AXIS_TICK_LONG = 18               # tick length for 6h / day marks
 AXIS_TICK_SHORT = 10              # tick length for 3h marks
-SUN_LABEL_Y = AXIS_TICK_Y + 28    # sunrise/noon/sunset times under the ticks
 
-SKY_TOP = SUN_LABEL_Y + 60        # top of the open sky (moon rides here)
+SKY_TOP = AXIS_TICK_Y             # night bands hang from the axis line down
+MOON_SKY_TOP = AXIS_TICK_Y + 40   # moon rides just below the axis
 HORIZON_Y = HEIGHT - MARGIN - PAD  # the sea's baseline; engraved fill sits above
 PLOT_TOP = 380            # highest the tide curve can reach
 PLOT_BOTTOM = HORIZON_Y   # curve's low-water floor == horizon
 
-MOON_STRIP_TOP = SKY_TOP
+MOON_STRIP_TOP = MOON_SKY_TOP
 MOON_STRIP_BOT = PLOT_TOP - 36
 ALT_SCALE = 72.0          # moon altitude (deg) mapped across the moon strip
 
