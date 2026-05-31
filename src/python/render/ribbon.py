@@ -61,6 +61,12 @@ class _Canvas:
         self.d.text((_s(xy[0]), _s(xy[1])), s, fill=fill,
                     font=T.font(style, _s(size)), anchor=anchor)
 
+    def text_width(self, s, style, size):
+        """Logical-pixel width of `s` at the given style/size (after FONT_MIN)."""
+        size = max(size, T.FONT_MIN)
+        box = self.d.textbbox((0, 0), s, font=T.font(style, _s(size)))
+        return (box[2] - box[0]) / SS
+
     def finish(self):
         return self.img.resize((T.WIDTH, T.HEIGHT), Image.LANCZOS)
 
@@ -207,31 +213,40 @@ def _draw_engraved_sea(c, curve, ctx, X):
 
 
 def _draw_title_and_axis(c, ctx, X):
-    """Top chart furniture, in two rows:
-      1) title row: each day's name + date, centered over that day's span;
-      2) axis row: tick marks at 3h (short) / 6h (long) / midnight (day), plus
-         sunrise / noon / sunset times labeled beneath their ticks.
+    """Top chart furniture, in three rows:
+      1) title row: "Weekday  Month D" on a single line per day, left-aligned to
+         that day's sunrise and pushed left only as far as needed to fit;
+      2) sun times row: sunrise / solar noon / sunset times;
+      3) axis row: the x-axis line (the night-box ceiling) with 3h/6h/midnight
+         ticks plus longer marks at the sun events.
     """
+    from data.sun import sun_events
     start, end = ctx["start"], ctx["end"]
     loc = ctx["location"]
     tz = start.tzinfo
 
-    # --- title row: day + date centered on each calendar day's visible span ---
+    # --- title row: one line per day, anchored at sunrise ----------------------
     day = start.replace(hour=0, minute=0, second=0, microsecond=0)
     while day <= end:
         d0, d1 = day, day + datetime.timedelta(days=1)
         vis0, vis1 = max(d0, start), min(d1, end)
-        if vis1 > vis0:
-            xmid = (X(vis0) + X(vis1)) / 2
-            if (X(vis1) - X(vis0)) > 200:  # only label days with room
-                c.text((xmid, T.TITLE_Y), day.strftime("%A"), T.INK,
-                       "serif", 40, anchor="mb")
-                c.text((xmid, T.DATE_Y), day.strftime("%B %-d"),
-                       T.INK_SOFT, "serif", 24, anchor="mb")
+        label = f"{day.strftime('%A')}  {day.strftime('%B %-d')}"
+        w = c.text_width(label, "serif", 30)
+        # don't bother if the day's visible slice is too narrow to read the label
+        if vis1 > vis0 and (X(vis1) - X(vis0)) >= w * 0.92:
+            ev = sun_events(d0.date(), loc["latitude"], loc["longitude"], tz)
+            sr = ev["sunrise"]
+            # ideal left edge = sunrise; clamp into the visible span and plot,
+            # so the title sits at sunrise but slides left to keep room.
+            left = X(sr) if sr else X(vis0)
+            left = min(left, X(vis1) - w)      # don't run past the day's end
+            left = max(left, X(vis0))          # don't start before the day
+            left = max(left, T.PLOT_LEFT)      # stay inside the plot
+            left = min(left, T.PLOT_RIGHT - w)
+            c.text((left, T.TITLE_Y), label, T.INK, "serif", 30, anchor="lb")
         day = d1
 
     # --- sun event times row (above the axis): sunrise, solar noon, sunset ---
-    from data.sun import sun_events
     yt = T.AXIS_TICK_Y                # axis line; also the top of the night box
     sun_marks = []                    # (x, when) to also tick on the axis
     d = start.astimezone(tz).date()
