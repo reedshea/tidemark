@@ -19,9 +19,8 @@ INK = 0           # primary data line + dark text
 PAPER = 255       # background
 INK_SOFT = 95     # secondary text / moon dark side
 GRID = 205        # hairlines, ticks
-SEA_LINE = 120    # engraved hairlines filling the sea below the curve
+SEA_LINE = 120    # engraved hairlines filling the sea below the curve (uniform)
 NIGHT_SKY = 238   # hard-edged night band behind the chart (sky)
-NIGHT_SEA = 150   # engraved hairlines at night (slightly darker than day sea)
 BORDER = 150      # the thin framing rectangle
 
 # Framed composition: a hairline border inset from the panel edge, a sky region

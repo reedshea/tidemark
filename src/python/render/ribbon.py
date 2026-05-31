@@ -131,7 +131,7 @@ def render(ctx):
     curve = [(X(t), Y(h)) for t, h in zip(series.times, series.heights)]
 
     _draw_night_bands(c, ctx, X, curve)
-    _draw_engraved_sea(c, curve, ctx, X)
+    _draw_engraved_sea(c, curve)
     _draw_title_and_axis(c, ctx, X)
     _draw_moon(c, ctx, X)
     _draw_curve(c, curve, X, now)
@@ -175,8 +175,8 @@ def _sky_mask(curve):
 
 def _draw_night_bands(c, ctx, X, curve):
     """Night as crisp rectangles in the SKY only — hard edges, clipped to above
-    the tide curve so the sea engraving below stays clean. The night sea is
-    handled separately by darkening its hairlines."""
+    the tide curve so the sea engraving below stays clean. The sea engraving is
+    a single uniform shade; night is shown only by these sky bands."""
     band = Image.new("L", (_s(T.WIDTH), _s(T.HEIGHT)), T.PAPER)
     bd = ImageDraw.Draw(band)
     drew = False
@@ -192,36 +192,18 @@ def _draw_night_bands(c, ctx, X, curve):
         c.d = ImageDraw.Draw(c.img)
 
 
-def _draw_engraved_sea(c, curve, ctx, X):
-    """Fill below the tide curve with horizontal hairlines (an engraving),
-    clipped to the area under the curve via a polygon mask. Night water uses a
-    slightly darker line so day and night read differently without flat fills.
-    Pure black-on-white hairlines: ideal for e-ink."""
-    nights = _night_spans(ctx)
-
-    def is_night(px):
-        for a, b in nights:
-            if X(a) <= px <= X(b):
-                return True
-        return False
-
+def _draw_engraved_sea(c, curve):
+    """Fill below the tide curve with evenly spaced horizontal hairlines (an
+    engraving), clipped to the area under the curve via a polygon mask. One
+    uniform line shade everywhere — day and night sea read the same; night is
+    shown by the sky bands above. Pure black-on-white hairlines: ideal for
+    e-ink."""
     full = Image.new("L", (_s(T.WIDTH), _s(T.HEIGHT)), T.PAPER)
     fd = ImageDraw.Draw(full)
     y = T.PLOT_TOP
-    # split each hairline at day/night boundaries so night sea is darker
-    bounds = [T.PLOT_LEFT]
-    for a, b in nights:
-        bounds += [X(a), X(b)]
-    bounds.append(T.PLOT_RIGHT)
-    bounds = sorted(min(max(x, T.PLOT_LEFT), T.PLOT_RIGHT) for x in bounds)
     while y <= T.HORIZON_Y:
-        for i in range(len(bounds) - 1):
-            x0, x1 = bounds[i], bounds[i + 1]
-            if x1 - x0 < 0.5:
-                continue
-            shade = T.NIGHT_SEA if is_night((x0 + x1) / 2) else T.SEA_LINE
-            fd.line([(_s(x0), _s(y)), (_s(x1), _s(y))], fill=shade,
-                    width=max(1, _s(1)))
+        fd.line([(_s(T.PLOT_LEFT), _s(y)), (_s(T.PLOT_RIGHT), _s(y))],
+                fill=T.SEA_LINE, width=max(1, _s(1)))
         y += T.SEA_LINE_GAP
 
     mask = Image.new("L", (_s(T.WIDTH), _s(T.HEIGHT)), 0)
