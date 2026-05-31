@@ -23,6 +23,12 @@ FAINT = 226       # night band fill
 TWILIGHT = 246    # twilight band fill
 NIGHT_WASH = 246  # barely-there night shading inside the plot
 
+# Day/night gradient block (the "sky" strip below the title). Each column's gray
+# tracks the sun's altitude: PAPER at/above the horizon, darkening to NIGHT_SKY
+# once the sun is TWILIGHT_SPAN degrees below it (~ astronomical night).
+NIGHT_SKY = 188
+TWILIGHT_SPAN = 18.0
+
 # Plot geometry. Time axis runs along the TOP (minimal); the tide is the hero
 # below it; the moon rides in a thin strip near the top; day/night band and the
 # optional temperature line sit at the bottom.

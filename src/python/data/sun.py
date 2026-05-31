@@ -87,6 +87,24 @@ def _event_times(date, lat, lon, altitude):
     return to_dt(morning), to_dt(evening)
 
 
+def sun_altitude(dt, lat, lon):
+    """Sun altitude in degrees at tz-aware datetime `dt` (offline).
+
+    Positive above the horizon (day), negative below (twilight/night). Used to
+    shade the day/night gradient: ~0 deg = white, deeper negative = darker.
+    """
+    u = dt.astimezone(UTC)
+    jd = _julian_day(u.date()) + 0.5
+    decl, eot = _solar_params(jd)
+    minutes = u.hour * 60 + u.minute + u.second / 60.0
+    solar_noon = 720.0 - 4.0 * lon - eot      # minutes UTC when hour angle = 0
+    ha = (minutes - solar_noon) / 4.0          # hour angle, degrees
+    lat_r, decl_r, ha_r = lat * D2R, decl * D2R, ha * D2R
+    sin_alt = (math.sin(lat_r) * math.sin(decl_r)
+               + math.cos(lat_r) * math.cos(decl_r) * math.cos(ha_r))
+    return math.asin(max(-1.0, min(1.0, sin_alt))) * R2D
+
+
 def sun_events(date, lat, lon, tz):
     """
     Dict of solar events for a local calendar `date` as tz-aware datetimes.

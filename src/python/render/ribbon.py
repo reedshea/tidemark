@@ -15,6 +15,7 @@ import datetime
 from PIL import Image, ImageDraw
 
 from render import theme as T
+from data.sun import sun_altitude
 
 SS = 2  # supersampling factor
 M2FT = 3.28084
@@ -67,15 +68,6 @@ def _fmt_time(dt):
     return f"{h}:{dt.minute:02d}{ap}"
 
 
-def _fmt_axis_hour(dt):
-    if dt.hour == 0:
-        return "12a"
-    if dt.hour == 12:
-        return "noon"
-    h = dt.hour % 12 or 12
-    return f"{h}{'a' if dt.hour < 12 else 'p'}"
-
-
 def render(ctx):
     c = _Canvas(T.WIDTH, T.HEIGHT)
     units = ctx["units"]
@@ -117,59 +109,50 @@ def render(ctx):
     return c.finish()
 
 
+def _sky_shade(alt):
+    """Map a sun altitude (deg) to a sky gray: white at/above the horizon,
+    darkening to NIGHT_SKY once the sun is TWILIGHT_SPAN below it."""
+    if alt >= 0:
+        return T.PAPER
+    f = min(1.0, -alt / T.TWILIGHT_SPAN)   # 0 at horizon → 1 at full night
+    return int(round(T.PAPER + f * (T.NIGHT_SKY - T.PAPER)))
+
+
 def _draw_daynight(c, ctx, X):
-    """Night as a faint column wash (moon strip + tide) plus a slim band at the
-    bottom, so daylight highs sit on white and night ones on faint gray."""
-    band_top, band_bot = T.BAND_TOP, T.BAND_TOP + T.BAND_H
-    c.rect((T.PLOT_LEFT, T.MOON_TOP, T.PLOT_RIGHT, T.PLOT_BOTTOM),
-           fill=T.NIGHT_WASH)
-    c.rect((T.PLOT_LEFT, band_top, T.PLOT_RIGHT, band_bot), fill=T.FAINT)
-    for (sr, sset) in ctx["daylight"]:
-        x0 = max(T.PLOT_LEFT, X(sr))
-        x1 = min(T.PLOT_RIGHT, X(sset))
-        if x1 <= x0:
-            continue
-        c.rect((x0, T.MOON_TOP, x1, T.PLOT_BOTTOM), fill=T.PAPER)
-        c.rect((x0, band_top, x1, band_bot), fill=T.PAPER)
-    c.line([(T.PLOT_LEFT, band_top), (T.PLOT_RIGHT, band_top)], T.GRID, 1)
-    c.line([(T.PLOT_LEFT, band_bot), (T.PLOT_RIGHT, band_bot)], T.GRID, 1)
+    """A day/night gradient 'sky' block below the title (not full height): each
+    column's gray tracks the sun's altitude — white by day, gray through dawn/
+    dusk to its darkest at solar midnight. The moon rides on top at its transit.
+    The tide panel itself stays clean white."""
+    loc = ctx["location"]
+    start, end = ctx["start"], ctx["end"]
+    span_s = (end - start).total_seconds()
+    top, bot = T.MOON_TOP, T.MOON_BOT
+    n = int(T.PLOT_RIGHT - T.PLOT_LEFT)        # ~one sample per logical pixel
+    w = (T.PLOT_RIGHT - T.PLOT_LEFT) / n
+    for i in range(n):
+        t = start + datetime.timedelta(seconds=span_s * (i + 0.5) / n)
+        shade = _sky_shade(sun_altitude(t, loc["latitude"], loc["longitude"]))
+        x0 = T.PLOT_LEFT + i * w
+        c.rect((x0, top, x0 + w + 1, bot), fill=shade)
+    c.line([(T.PLOT_LEFT, top), (T.PLOT_RIGHT, top)], T.GRID, 1)
+    c.line([(T.PLOT_LEFT, bot), (T.PLOT_RIGHT, bot)], T.GRID, 1)
 
 
 def _draw_top_axis(c, ctx, X):
-    """Minimal time axis along the top: 3-hour ticks, midnights become the next
-    day's name, and the day/night dividers drop the full height."""
+    """Day labels only: each day's name centered at its local noon, sitting in
+    the daytime (white) middle of the sky strip. No hour ticks — the gradient
+    shows day/night and tide peaks carry their own times."""
     start, end = ctx["start"], ctx["end"]
-    now_x = X(ctx["now"])
-    bottom = T.BAND_TOP + T.BAND_H
-    # Midnights carry a weekday name drawn to their right; reserve that slot so
-    # the following hour label (e.g. "3a") doesn't collide with the name.
-    midnights = []
-    t = start.replace(minute=0, second=0, microsecond=0)
-    while t <= end:
-        if t.hour == 0:
-            midnights.append(X(t))
-        t += datetime.timedelta(hours=1)
-    NAME_RESERVE = 180  # px to the right of midnight the weekday name occupies
-
-    t = start.replace(minute=0, second=0, microsecond=0)
-    while t < start or t.hour % 3 != 0:
-        t += datetime.timedelta(hours=1)
-    while t <= end:
-        x = X(t)
-        if t.hour == 0:
-            # new day: faint full-height divider + weekday name to its right
-            c.line([(x, T.TICK_Y), (x, bottom)], T.FAINT, 1)
-            c.text((x + 12, T.TIME_LABEL_Y), t.strftime("%A"), T.INK_SOFT,
-                   "serif", 26, anchor="lb")
-        elif abs(x - now_x) >= 48 \
-                and not any(0 < (x - mx) < NAME_RESERVE for mx in midnights):
-            # skip if 'now' owns this slot or a weekday name sits just left of it
-            c.line([(x, T.TICK_Y), (x, T.TICK_Y + 7)], T.GRID, 1)
-            # 9a / noon / 3p — the daytime hours — a touch darker
-            daytime = 8 <= t.hour <= 16
-            c.text((x, T.TIME_LABEL_Y), _fmt_axis_hour(t),
-                   T.INK_SOFT if daytime else T.GRID, "sans", 22, anchor="mb")
-        t += datetime.timedelta(hours=3)
+    y = (T.MOON_TOP + T.MOON_BOT) / 2  # vertical middle of the sky strip
+    noon = start.replace(hour=12, minute=0, second=0, microsecond=0)
+    while noon < start:
+        noon += datetime.timedelta(days=1)
+    while noon <= end:
+        x = X(noon)
+        if T.PLOT_LEFT <= x <= T.PLOT_RIGHT:
+            c.text((x, y), noon.strftime("%A"), T.INK_SOFT, "serif", 26,
+                   anchor="mm")
+        noon += datetime.timedelta(days=1)
 
 
 def _draw_height_axis(c, Yv, y_lo, y_hi, unit_label):
