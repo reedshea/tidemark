@@ -15,46 +15,51 @@ WIDTH = 1872
 HEIGHT = 1404
 
 # Grayscale palette (0 = black, 255 = white). Kept deliberately sparse.
-INK = 0           # primary data + text
+INK = 0           # primary data line + dark text
 PAPER = 255       # background
 INK_SOFT = 95     # secondary text / moon dark side
-GRID = 205        # hairlines, ticks, past data
-FAINT = 226       # night band fill
-TWILIGHT = 246    # twilight band fill
-NIGHT_WASH = 246  # barely-there night shading inside the plot
+GRID = 205        # hairlines, ticks
+SEA_LINE = 120    # engraved hairlines filling the sea below the curve
+NIGHT_SKY = 238   # hard-edged night band behind the chart (sky)
+NIGHT_SEA = 150   # engraved hairlines at night (slightly darker than day sea)
+BORDER = 150      # the thin framing rectangle
 
-# Day/night gradient block (the "sky" strip below the title). Each column's gray
-# tracks the sun's altitude: PAPER at/above the horizon, darkening to NIGHT_SKY
-# once the sun is TWILIGHT_SPAN degrees below it (~ astronomical night).
-NIGHT_SKY = 188
-TWILIGHT_SPAN = 18.0
+# Framed composition: a hairline border inset from the panel edge, a sky region
+# up top (day labels + moon, with hard-edged night bands), a horizon line, and
+# the engraved sea filling from the tide curve down to the horizon baseline.
+MARGIN = 70               # inset of the framing border from the panel edge
+PAD = 54                  # breathing room from border to the drawing area
 
-# Plot geometry. Time axis runs along the TOP (minimal); the tide is the hero
-# below it; the moon rides in a thin strip near the top; day/night band and the
-# optional temperature line sit at the bottom.
-PLOT_LEFT = 124
-PLOT_RIGHT = WIDTH - 60
+PLOT_LEFT = MARGIN + PAD
+PLOT_RIGHT = WIDTH - MARGIN - PAD
 
-TOP_RULE_Y = 112          # rule under the title
-TIME_LABEL_Y = 140        # baseline of the top time-axis labels
-TICK_Y = 152              # short downward ticks under the time labels
+# Top "chart furniture", three rows top-to-bottom: day+date, sun times,
+# then the x-axis line (also the night-box ceiling) with its hour ticks.
+TITLE_Y = MARGIN + 64             # baseline of the day + date title line
+SUN_LABEL_Y = TITLE_Y + 52        # sunrise / noon / sunset times row
+AXIS_TICK_Y = SUN_LABEL_Y + 22    # x-axis line + ticks; also the night-box top
+AXIS_TICK_LONG = 18               # tick length for 6h / midnight marks
+AXIS_TICK_SHORT = 10              # tick length for 3h marks
 
-MOON_TOP = 178            # thin strip the moon glyph rides in
-MOON_BOT = 246
+SKY_TOP = AXIS_TICK_Y             # night bands hang from the axis line down
+MOON_SKY_TOP = AXIS_TICK_Y + 40   # moon rides just below the axis
+HORIZON_Y = HEIGHT - MARGIN - PAD  # the sea's baseline; engraved fill sits above
+PLOT_TOP = 380            # highest the tide curve can reach
+PLOT_BOTTOM = HORIZON_Y   # curve's low-water floor == horizon
+
+MOON_STRIP_TOP = MOON_SKY_TOP
+MOON_STRIP_BOT = PLOT_TOP - 36
 ALT_SCALE = 72.0          # moon altitude (deg) mapped across the moon strip
 
-PLOT_TOP = 270            # top of the tide panel
-PLOT_BOTTOM = 1390        # bottom of the tide scale ~ bottom of the screen
+SEA_LINE_GAP = 13         # vertical spacing of engraved sea hairlines (logical)
 
-BAND_TOP = 1136           # day/night band
-BAND_H = 28
-
-TEMP_TOP = 1182           # optional temperature line (bottom)
-TEMP_BOT = 1256
-
-FOOTER_Y = HEIGHT - 60
+FOOTER_Y = HEIGHT - MARGIN - 8
 
 _FONT_DIRS = [
+    # ET Book (Tufte's Bembo), bundled with the repo so it works offline on the
+    # Pi; searched first so the serif styles resolve to it.
+    os.path.join(os.path.dirname(__file__), "..", "..", "..",
+                 "assets", "fonts"),
     "/usr/share/fonts/truetype/dejavu",
     "/usr/share/fonts/truetype/liberation",
     "/Library/Fonts",
@@ -62,12 +67,16 @@ _FONT_DIRS = [
 ]
 
 _FONT_FILES = {
-    "serif": ["DejaVuSerif.ttf", "LiberationSerif-Regular.ttf", "Georgia.ttf"],
-    "serif_bold": ["DejaVuSerif-Bold.ttf", "LiberationSerif-Bold.ttf",
-                   "Georgia Bold.ttf"],
-    "sans": ["DejaVuSans.ttf", "LiberationSans-Regular.ttf", "Arial.ttf"],
-    "sans_bold": ["DejaVuSans-Bold.ttf", "LiberationSans-Bold.ttf",
-                  "Arial Bold.ttf"],
+    # Everything is set in Tufte's ET Book for a unified, framed-print voice;
+    # the sans styles are aliased to ET Book too. DejaVu/Liberation are kept
+    # only as fallbacks should the bundled fonts be missing.
+    "serif": ["roman.ttf", "DejaVuSerif.ttf", "LiberationSerif-Regular.ttf"],
+    "serif_bold": ["semibold.ttf", "bold.ttf", "DejaVuSerif-Bold.ttf",
+                   "LiberationSerif-Bold.ttf"],
+    "serif_italic": ["italic.ttf", "DejaVuSerif-Italic.ttf"],
+    "sans": ["roman.ttf", "DejaVuSans.ttf", "LiberationSans-Regular.ttf"],
+    "sans_bold": ["bold.ttf", "semibold.ttf", "DejaVuSans-Bold.ttf",
+                  "LiberationSans-Bold.ttf"],
 }
 
 _cache = {}
