@@ -10,6 +10,8 @@ Validated against NOAA station 8447368: high-tide timing within ~3 min,
 full-curve RMS ~0.17 m on a ~1.2 m range.
 """
 
+import os
+import json
 import datetime
 
 from data.harmonics import build_constituents, predict_height
@@ -75,6 +77,53 @@ def predict_series(station, start, hours, step_minutes=3):
 
     extrema = _find_extrema(times, heights)
     return TideSeries(times, heights, extrema, station)
+
+
+def extreme_range(station, ref_dt, cache_dir=None, days=365,
+                  step_minutes=30, max_age_days=30):
+    """(min, max) predicted water level (m) over ~`days` from `ref_dt`.
+
+    Used for a *fixed* vertical scale so the curve's height means the same thing
+    every render. Scanning a year of predictions is slow, so the result is
+    cached per station (it changes negligibly day to day).
+    """
+    name = station.get("name", "station")
+    path = None
+    if cache_dir:
+        cache_dir = os.path.expanduser(cache_dir)
+        safe = "".join(ch if ch.isalnum() else "_" for ch in name)
+        path = os.path.join(cache_dir, f"range_{safe}.json")
+        try:
+            with open(path) as fh:
+                d = json.load(fh)
+            age = abs((ref_dt - datetime.datetime.fromisoformat(d["computed"]))
+                      .days)
+            if age <= max_age_days:
+                return d["lo"], d["hi"]
+        except (OSError, ValueError, KeyError):
+            pass
+
+    resolved = build_constituents(station)
+    mtl = station["mean_tide_level"]
+    lo = hi = predict_height(resolved, mtl, ref_dt)
+    n = int(days * 24 * 60 / step_minutes)
+    for i in range(1, n + 1):
+        v = predict_height(resolved, mtl,
+                           ref_dt + datetime.timedelta(minutes=i * step_minutes))
+        if v < lo:
+            lo = v
+        elif v > hi:
+            hi = v
+
+    if path:
+        try:
+            os.makedirs(cache_dir, exist_ok=True)
+            with open(path, "w") as fh:
+                json.dump({"lo": lo, "hi": hi, "computed": ref_dt.isoformat()},
+                          fh)
+        except OSError:
+            pass
+    return lo, hi
 
 
 def _find_extrema(times, heights):

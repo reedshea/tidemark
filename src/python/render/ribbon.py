@@ -72,7 +72,6 @@ def render(ctx):
     c = _Canvas(T.WIDTH, T.HEIGHT)
     units = ctx["units"]
     to_disp = (lambda m: m * M2FT) if units == "ft" else (lambda m: m)
-    unit_label = "ft" if units == "ft" else "m"
 
     start, end, now = ctx["start"], ctx["end"], ctx["now"]
     series = ctx["series"]
@@ -82,10 +81,14 @@ def render(ctx):
         return T.PLOT_LEFT + (dt - start).total_seconds() / span_s \
             * (T.PLOT_RIGHT - T.PLOT_LEFT)
 
-    lo = to_disp(series.min)
-    hi = to_disp(series.max)
-    y_lo = lo - 0.7
-    y_hi = hi + max(0.7, (hi - lo) * 0.14)
+    # Fixed scale centered on mean tide level: the middle line sits exactly
+    # halfway, lows read as negative and highs as positive (local relative
+    # level, not absolute feet). 15% headroom keeps even annual extremes — and
+    # the labels above peaks — off the edges.
+    sc = ctx["scale"]
+    mid = to_disp(sc["mid"])
+    half = max(to_disp(sc["hi"]) - mid, mid - to_disp(sc["lo"])) * 1.15
+    y_lo, y_hi = mid - half, mid + half
 
     def Yv(v):
         return T.PLOT_BOTTOM - (v - y_lo) / (y_hi - y_lo) \
@@ -96,7 +99,7 @@ def render(ctx):
 
     _draw_daynight(c, ctx, X)
     _draw_top_axis(c, ctx, X)
-    _draw_height_axis(c, Yv, y_lo, y_hi, unit_label)
+    _draw_midline(c, Yv, mid)
     _draw_moon(c, ctx, X)
     _draw_curve(c, series, X, Y, now)
     _draw_extrema(c, series, X, Y, now)
@@ -104,7 +107,6 @@ def render(ctx):
     if ctx.get("weather") is not None:
         _draw_temperature(c, ctx, X)
     _draw_title(c, ctx)
-    _draw_footer(c, ctx)
 
     return c.finish()
 
@@ -155,21 +157,12 @@ def _draw_top_axis(c, ctx, X):
         noon += datetime.timedelta(days=1)
 
 
-def _draw_height_axis(c, Yv, y_lo, y_hi, unit_label):
-    c.line([(T.PLOT_LEFT, T.PLOT_BOTTOM), (T.PLOT_RIGHT, T.PLOT_BOTTOM)],
-           T.INK, 1)
-    step = 1 if (y_hi - y_lo) <= 7 else 2
-    v = math.ceil(y_lo)
-    while v <= y_hi + 0.001:
-        y = Yv(v)
-        c.line([(T.PLOT_LEFT, y), (T.PLOT_RIGHT, y)],
-               T.GRID if v == 0 else T.FAINT, 1)
-        c.line([(T.PLOT_LEFT - 8, y), (T.PLOT_LEFT, y)], T.GRID, 1)
-        c.text((T.PLOT_LEFT - 16, y), f"{v}", T.INK_SOFT, "sans", 22,
-               anchor="rm")
-        v += step
-    c.text((T.PLOT_LEFT - 16, T.PLOT_TOP - 30), unit_label, T.INK_SOFT,
-           "sans", 22, anchor="rm")
+def _draw_midline(c, Yv, mid):
+    """A single reference line at mean tide level — roughly halfway between high
+    and low. No numbers: it shows local relative level (below it reads as low/
+    'negative'), not absolute height."""
+    y = Yv(mid)
+    c.line([(T.PLOT_LEFT, y), (T.PLOT_RIGHT, y)], T.GRID, 1)
 
 
 def _moon_glyph(c, cx, cy, r, frac, illum):
@@ -319,10 +312,3 @@ def _draw_title(c, ctx):
            anchor="lb")
     c.line([(T.PLOT_LEFT - 4, T.TOP_RULE_Y), (T.PLOT_RIGHT, T.TOP_RULE_Y)],
            T.GRID, 1)
-
-
-def _draw_footer(c, ctx):
-    now = ctx["now"]
-    msg = (f"tidemark · predicted offline · updated "
-           f"{now.strftime('%-I:%M %p').lower()}")
-    c.text((T.PLOT_LEFT - 4, T.FOOTER_Y), msg, T.GRID, "sans", 20, anchor="lt")

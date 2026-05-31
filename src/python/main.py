@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import config
-from data.tide import predict_series
+from data.tide import predict_series, extreme_range
 from data.sun import daylight_intervals
 from data import moon as moonmod
 from render import ribbon
@@ -35,6 +35,12 @@ def build_context(now=None):
     series = predict_series(loc["station"], start, config.WINDOW_HOURS)
     daylight = daylight_intervals(start, end, loc["latitude"],
                                   loc["longitude"], tz)
+
+    # Fixed vertical scale: the station's annual extremes (cached), centered on
+    # mean tide level so the middle line sits halfway between highs and lows.
+    cache_dir = os.path.expanduser("~/.tidemark")
+    ext_lo, ext_hi = extreme_range(loc["station"], now, cache_dir=cache_dir)
+    scale = {"lo": ext_lo, "hi": ext_hi, "mid": loc["station"]["mean_tide_level"]}
 
     frac, illum = moonmod.phase(now)
     moon_events = moonmod.rise_set(start, end, loc["latitude"],
@@ -65,6 +71,7 @@ def build_context(now=None):
         "start": start,
         "end": end,
         "series": series,
+        "scale": scale,
         "daylight": daylight,
         "moon": moon,
         "weather": weather,
