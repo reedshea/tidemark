@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 
 #ifdef PLATFORM_MACOS
 #include "SDL.h"
@@ -96,12 +97,17 @@ bool display_bitmap(const char* file_path) {
 #else
     // For Raspberry Pi, use the IT8951 library's BMP function
     #ifndef PLATFORM_MACOS
-    // Flash the panel clean with a full INIT-mode refresh first, so ghosting
-    // from the previous frame doesn't bleed through the new image.
-    printf("Clearing display with full INIT-mode refresh to remove ghosting...\n");
-    IT8951_Clear_Refresh();
+    // Most refreshes are a plain GC16 update (no white flash) — subtle and
+    // quick. Once a night (the first run in the 3am hour) do a full INIT-mode
+    // clear to reset any ghosting that has accumulated through the day.
+    time_t now_t = time(NULL);
+    struct tm *lt = localtime(&now_t);
+    if (lt && lt->tm_hour == 3 && lt->tm_min < 5) {
+        printf("Nightly full INIT-mode refresh to reset ghosting...\n");
+        IT8951_Clear_Refresh();
+    }
 
-    printf("Attempting to display bitmap on e-ink display using IT8951_BMP_Example...\n");
+    printf("Displaying bitmap on e-ink (GC16) using IT8951_BMP_Example...\n");
     // IT8951_BMP_Example returns void, so we're just calling it and assuming it works
     IT8951_BMP_Example(0, 0, (char*)file_path);
     printf("Successfully called IT8951_BMP_Example to display bitmap on e-ink display\n");

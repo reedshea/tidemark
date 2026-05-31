@@ -35,9 +35,9 @@ PLOT_RIGHT = WIDTH - MARGIN - PAD
 
 # Top "chart furniture", three rows top-to-bottom: day+date, sun times,
 # then the x-axis line (also the night-box ceiling) with its hour ticks.
-TITLE_Y = MARGIN + 64             # baseline of the day + date title line
-SUN_LABEL_Y = TITLE_Y + 52        # sunrise / noon / sunset times row
-AXIS_TICK_Y = SUN_LABEL_Y + 22    # x-axis line + ticks; also the night-box top
+TITLE_Y = MARGIN + 72             # baseline of the day + date title line
+SUN_LABEL_Y = TITLE_Y + 70        # sunrise / noon / sunset times row
+AXIS_TICK_Y = SUN_LABEL_Y + 30    # x-axis line + ticks; also the night-box top
 AXIS_TICK_LONG = 18               # tick length for 6h / midnight marks
 AXIS_TICK_SHORT = 10              # tick length for 3h marks
 
@@ -81,10 +81,13 @@ _FONT_FILES = {
 
 _cache = {}
 
-# Smallest type we ever render. Anything requested below this is bumped up so
-# every label stays legible at panel viewing distance. Tune this one knob to
-# raise/lower the floor for all secondary text.
-FONT_MIN = 44
+# Smallest type we ever render (a safety floor below the intentional sizes).
+FONT_MIN = 28
+
+# Type scale (logical pt). Dates are the largest; times match the old date size.
+FONT_DATE = 57            # weekday + date titles
+FONT_TIME = 44            # sun times (header) and tide-peak times
+SMALLCAP = 0.72           # am/pm small-cap height relative to the time
 
 
 def font(style, size):

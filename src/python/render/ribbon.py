@@ -71,11 +71,36 @@ class _Canvas:
         return self.img.resize((T.WIDTH, T.HEIGHT), Image.LANCZOS)
 
 
-def _fmt_time(dt):
-    """e.g. '1:42p' — compact 12-hour."""
+def _time_parts(dt):
+    """('1:42', 'p.m.') — 12-hour clock with a Chicago-style meridiem."""
     h = dt.hour % 12 or 12
-    ap = "a" if dt.hour < 12 else "p"
-    return f"{h}:{dt.minute:02d}{ap}"
+    mer = "a.m." if dt.hour < 12 else "p.m."
+    return f"{h}:{dt.minute:02d}", mer
+
+
+def _time_width(c, dt, size, style="sans"):
+    """Logical width of a time drawn by _draw_time (number + small-caps mer)."""
+    num, mer = _time_parts(dt)
+    sc = max(T.FONT_MIN, round(size * T.SMALLCAP))
+    return (c.text_width(num, style, size) + size * 0.16
+            + c.text_width(mer.upper(), style, sc))
+
+
+def _draw_time(c, x, baseline, dt, size, fill, style="sans", align="l"):
+    """Draw a time as '8:38' + small-caps 'p.m.' sharing one baseline. The
+    meridiem is set in (faux) small caps with periods, per late-20th-century
+    Chicago style. `align` (l/m/r) is relative to x. Returns total width."""
+    num, mer = _time_parts(dt)
+    sc_size = max(T.FONT_MIN, round(size * T.SMALLCAP))
+    gap = size * 0.16
+    num_w = c.text_width(num, style, size)
+    sc = mer.upper()                          # uppercase reads as small caps
+    sc_w = c.text_width(sc, style, sc_size)
+    total = num_w + gap + sc_w
+    lx = x - total / 2 if align == "m" else (x - total if align == "r" else x)
+    c.text((lx, baseline), num, fill, style, size, anchor="ls")
+    c.text((lx + num_w + gap, baseline), sc, fill, style, sc_size, anchor="ls")
+    return total
 
 
 def render(ctx):
@@ -230,8 +255,8 @@ def _draw_title_and_axis(c, ctx, X):
     while day <= end:
         d0, d1 = day, day + datetime.timedelta(days=1)
         vis0, vis1 = max(d0, start), min(d1, end)
-        label = f"{day.strftime('%A')}  {day.strftime('%B %-d')}"
-        w = c.text_width(label, "serif", 30)
+        label = f"{day.strftime('%A')} {day.strftime('%B %-d')}"
+        w = c.text_width(label, "serif", T.FONT_DATE)
         # don't bother if the day's visible slice is too narrow to read the label
         if vis1 > vis0 and (X(vis1) - X(vis0)) >= w * 0.92:
             ev = sun_events(d0.date(), loc["latitude"], loc["longitude"], tz)
@@ -243,7 +268,8 @@ def _draw_title_and_axis(c, ctx, X):
             left = max(left, X(vis0))          # don't start before the day
             left = max(left, T.PLOT_LEFT)      # stay inside the plot
             left = min(left, T.PLOT_RIGHT - w)
-            c.text((left, T.TITLE_Y), label, T.INK, "serif", 30, anchor="lb")
+            c.text((left, T.TITLE_Y), label, T.INK, "serif", T.FONT_DATE,
+                   anchor="ls")
         day = d1
 
     # --- sun times row (above the axis), left-aligned near each event tick ---
@@ -255,18 +281,25 @@ def _draw_title_and_axis(c, ctx, X):
         sr, ss = ev["sunrise"], ev["sunset"]
         marks = []
         if sr:
-            marks.append((_fmt_time(sr), sr))            # sunrise time
+            marks.append((sr, sr))                        # sunrise time
         if sr and ss:
             marks.append(("noon", sr + (ss - sr) / 2))    # solar noon
         if ss:
-            marks.append((_fmt_time(ss), ss))            # sunset time
+            marks.append((ss, ss))                        # sunset time
         for label, when in marks:
             x = X(when)
-            if T.PLOT_LEFT <= x <= T.PLOT_RIGHT:
-                w = c.text_width(label, "sans", 20)
+            if not (T.PLOT_LEFT <= x <= T.PLOT_RIGHT):
+                continue
+            if label == "noon":
+                w = c.text_width("noon", "sans", T.FONT_TIME)
+                lx = min(x, T.PLOT_RIGHT - w)
+                c.text((lx, T.SUN_LABEL_Y), "noon", T.INK_SOFT, "sans",
+                       T.FONT_TIME, anchor="ls")
+            else:
+                w = _time_width(c, label, T.FONT_TIME)
                 lx = min(x, T.PLOT_RIGHT - w)   # left-align at the tick, clamp
-                c.text((lx, T.SUN_LABEL_Y), label, T.INK_SOFT, "sans", 20,
-                       anchor="lb")
+                _draw_time(c, lx, T.SUN_LABEL_Y, label, T.FONT_TIME,
+                           T.INK_SOFT, "sans", align="l")
         d += datetime.timedelta(days=1)
 
     # --- axis line + hour ticks at 3 / 6 / 9 / 12 (ticks hang into night) ---
@@ -277,11 +310,11 @@ def _draw_title_and_axis(c, ctx, X):
     while t <= end:
         x = X(t)
         if t.hour == 0:
-            c.line([(x, yt), (x, yt + T.AXIS_TICK_LONG + 6)], T.INK_SOFT, 1)
+            c.line([(x, yt), (x, yt + T.AXIS_TICK_LONG + 6)], T.INK, 1)
         elif t.hour % 6 == 0:
-            c.line([(x, yt), (x, yt + T.AXIS_TICK_LONG)], T.GRID, 1)
+            c.line([(x, yt), (x, yt + T.AXIS_TICK_LONG)], T.INK_SOFT, 1)
         else:
-            c.line([(x, yt), (x, yt + T.AXIS_TICK_SHORT)], T.GRID, 1)
+            c.line([(x, yt), (x, yt + T.AXIS_TICK_SHORT)], T.INK_SOFT, 1)
         t += datetime.timedelta(hours=3)
 
 
@@ -348,8 +381,8 @@ def _draw_extrema(c, series, X, Y, now):
         if e.kind == "H":
             is_next = (e is next_high)
             c.dot(x, y, 6, fill=ink)
-            c.text((x, y - 26), _fmt_time(e.time), ink,
-                   "sans_bold" if is_next else "sans", 28, anchor="md")
+            _draw_time(c, x, y - 22, e.time, T.FONT_TIME, ink,
+                       "sans_bold" if is_next else "sans", align="m")
         else:
             c.dot(x, y, 5, fill=T.PAPER, outline=ink, width=2)
 
