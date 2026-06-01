@@ -24,6 +24,18 @@ from data.sun import sun_altitude
 SS = 2  # supersampling factor
 M2FT = 3.28084
 
+# The engraved sea's hairlines undulate as a sum of sine swells rather than
+# lying flat: a long lazy roller + the main swell + a little chop. Summed, they
+# read as rolling sets of larger and smaller waves. Each entry is
+# (amplitude px, wavelength px, base phase, phase-drift per line); the per-line
+# drift keeps swells from stacking into rigid vertical columns. Amplitudes stay
+# well below the bold tide curve so the chart is still mostly Tufte.
+_SEA_SWELL = [
+    (3.6, 430.0, 0.0, 0.18),
+    (4.4, 165.0, 1.7, 0.55),
+    (1.6, 73.0, 3.9, 1.05),
+]
+
 
 def _s(v):
     return int(round(v * SS))
@@ -214,18 +226,27 @@ def _draw_night_bands(c, ctx, X, curve):
 
 
 def _draw_engraved_sea(c, curve):
-    """Fill below the tide curve with evenly spaced horizontal hairlines (an
-    engraving), clipped to the area under the curve via a polygon mask. One
-    uniform line shade everywhere — day and night sea read the same; night is
-    shown by the sky bands above. Pure black-on-white hairlines: ideal for
-    e-ink."""
+    """Fill below the tide curve with evenly spaced hairlines (an engraving),
+    clipped to the area under the curve via a polygon mask. The lines undulate
+    as a gentle sum of sine swells (see _SEA_SWELL) so the sea reads as rolling
+    water. One uniform line shade everywhere — day and night sea read the same;
+    night is shown by the sky bands above. Pure black-on-white hairlines: ideal
+    for e-ink."""
     full = Image.new("L", (_s(T.WIDTH), _s(T.HEIGHT)), T.PAPER)
     fd = ImageDraw.Draw(full)
     y = T.PLOT_TOP
+    i = 0
     while y <= T.HORIZON_Y:
-        fd.line([(_s(T.PLOT_LEFT), _s(y)), (_s(T.PLOT_RIGHT), _s(y))],
-                fill=T.SEA_LINE, width=max(1, _s(1)))
+        pts = []
+        x = T.PLOT_LEFT
+        while x <= T.PLOT_RIGHT:
+            yy = y + sum(a * math.sin(2 * math.pi * x / w + p + i * d)
+                         for a, w, p, d in _SEA_SWELL)
+            pts.append((_s(x), _s(yy)))
+            x += 4
+        fd.line(pts, fill=T.SEA_LINE, width=max(1, _s(1)))
         y += T.SEA_LINE_GAP
+        i += 1
 
     mask = Image.new("L", (_s(T.WIDTH), _s(T.HEIGHT)), 0)
     md = ImageDraw.Draw(mask)
