@@ -322,10 +322,16 @@ def _draw_title_and_axis(c, ctx, X):
             if not (T.PLOT_LEFT <= x <= T.PLOT_RIGHT):
                 continue
             if label == "noon":
-                w = c.text_width("noon", "sans", T.FONT_TIME)
-                lx = min(x, T.PLOT_RIGHT - w)
-                c.text((lx, T.SUN_LABEL_Y), "noon", T.INK, "sans",
+                # "Noon" as true small caps: full-size cap N + small-caps OON,
+                # sharing a baseline (same treatment as the small-caps meridiem).
+                sc = max(T.FONT_MIN, round(T.FONT_TIME * T.SMALLCAP))
+                w_n = c.text_width("N", "sans", T.FONT_TIME)
+                total = w_n + c.text_width("OON", "sans", sc)
+                lx = min(x, T.PLOT_RIGHT - total)
+                c.text((lx, T.SUN_LABEL_Y), "N", T.INK, "sans",
                        T.FONT_TIME, anchor="ls")
+                c.text((lx + w_n, T.SUN_LABEL_Y), "OON", T.INK, "sans",
+                       sc, anchor="ls")
             else:
                 w = _time_width(c, label, T.FONT_TIME)
                 lx = min(x, T.PLOT_RIGHT - w)   # left-align at the tick, clamp
