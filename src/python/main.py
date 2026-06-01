@@ -96,10 +96,20 @@ def main():
             now = now.replace(tzinfo=ZoneInfo(config.LOCATION["timezone"]))
 
     ctx = build_context(now)
-    img = ribbon.render(ctx)
+    img, rect = ribbon.render(ctx)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
     img.save(args.output, "BMP")
+
+    # Sidecar the C host reads to choose its e-ink refresh strategy:
+    #   line 1: the window's start as an integer epoch — a "which hour" token.
+    #           When it changes (the hour rolled over) the host does a full
+    #           crisp GC16 repaint; otherwise only the now-marker moved.
+    #   line 2: "x y w h" of the marker strip to refresh on a partial update.
+    base, _ = os.path.splitext(os.path.abspath(args.output))
+    with open(base + ".meta", "w") as f:
+        f.write(f"{int(ctx['start'].timestamp())}\n")
+        f.write("{} {} {} {}\n".format(*rect))
     nh = ctx["series"].next_high(ctx["now"])
     if nh:
         print(f"Next high tide: {nh.time.strftime('%a %-I:%M %p')} "

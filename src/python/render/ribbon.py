@@ -141,7 +141,28 @@ def render(ctx):
         _draw_temperature(c, ctx, X)
     _draw_frame(c)
 
-    return c.finish()
+    return c.finish(), _now_marker_rect(X, now)
+
+
+def _now_marker_rect(X, now):
+    """Bounding box (logical px, x/y/w/h) of the region the now-marker can
+    occupy during the current clock hour.
+
+    The window is anchored to the top of the hour, so between hourly full
+    refreshes only the now-marker moves — and it stays within this single
+    one-hour-wide column. The host refreshes just this strip every few minutes
+    (partial GC16) and repaints the whole panel when the hour rolls over. The
+    box spans the full curve height so the dot is never clipped as it rides the
+    tide up and down, plus the dot's outer ring and a little label headroom."""
+    hour0 = now.replace(minute=0, second=0, microsecond=0)
+    x0 = X(hour0)
+    x1 = X(hour0 + datetime.timedelta(hours=1))
+    pad_x = 18                       # now-dot outer ring (12) + slack
+    rx0 = int(max(T.PLOT_LEFT, x0 - pad_x))
+    rx1 = int(min(T.PLOT_RIGHT, x1 + pad_x))
+    ry0 = int(T.PLOT_TOP - 40)       # headroom for a high-tide crest label
+    ry1 = int(T.HORIZON_Y + 4)       # down to the tick's foot on the horizon
+    return (rx0, ry0, rx1 - rx0, ry1 - ry0)
 
 
 def _night_spans(ctx):

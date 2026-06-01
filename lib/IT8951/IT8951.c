@@ -840,6 +840,11 @@ void IT8951_Display_BMP_Area(char *path, uint16_t x, uint16_t y,
 
 	// Push the whole new image to the controller, then repaint only the box.
 	IT8951HostAreaPackedPixelWrite(&stLdImgInfo, &stAreaImgInfo);
+	// The controller wants the refresh rectangle's x and width 4px-aligned;
+	// snap x down and the right edge up so the marker strip is fully covered.
+	uint16_t x_end = (uint16_t)((x + w + 3) & ~0x3);
+	x &= ~0x3;
+	w = x_end - x;
 	if (x >= gstI80DevInfo.usPanelW) x = 0;
 	if (y >= gstI80DevInfo.usPanelH) y = 0;
 	if (x + w > gstI80DevInfo.usPanelW) w = gstI80DevInfo.usPanelW - x;
