@@ -33,8 +33,13 @@ rsync -av --exclude '.git' --exclude '*.o' --exclude 'tidemark' \
 #    TIDEMARK_FULL_CLEAR forces an INIT clear + full GC16 for a clean slate.
 #    timeout guards the baseline: if a render/display ever hangs on the SPI bus,
 #    it's killed instead of wedging the bus forever.
+#    Then delete /run/tidemark.state: starting the timer fires the service
+#    immediately, and with no stored token that first fire is a FULL refresh
+#    (not a partial). A partial right after deploy was what left the panel
+#    showing only a sliver; this guarantees deploy ends on a clean full.
 ssh "$PI" 'cd ~/tidemark/build && make clean && make \
     && sudo env PWD=$(pwd) TIDEMARK_FULL_CLEAR=1 timeout 150 ./tidemark \
+    && sudo rm -f /run/tidemark.state \
     && sudo systemctl start tidemark.timer \
     && echo "timer=$(systemctl is-active tidemark.timer)"' \
     || { echo "Build, baseline, or timer restart failed"; exit 1; }
