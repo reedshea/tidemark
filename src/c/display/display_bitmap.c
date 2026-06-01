@@ -147,13 +147,14 @@ bool display_bitmap(const char* file_path) {
     int hour_rolled = !have_meta || !have_prev || start_tok != prev_tok;
     int do_full = daily || forced || hour_rolled || rw <= 0 || rh <= 0;
 
-    if (daily || forced) {
-        printf("Full INIT-mode clear to reset ghosting...\n");
-        IT8951_Clear_Refresh();
-    }
-
     if (do_full) {
-        printf("Full GC16 refresh using IT8951_BMP_Example...\n");
+        // Every full refresh does an INIT clear (mode 0, the white flash) before
+        // the GC16 repaint. The window scrolls each hour, so the moon, date
+        // labels and tide line all change position; a GC16-only repaint only
+        // softens the ghost of their previous position, while the INIT clear
+        // actually wipes it. (daily/forced are folded in — they're full too.)
+        printf("Full INIT clear + GC16 refresh...\n");
+        IT8951_Clear_Refresh();
         IT8951_BMP_Example(0, 0, (char*)file_path);
     } else {
         printf("Partial GC16 refresh of now-marker strip [%d %d %d %d]...\n",
