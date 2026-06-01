@@ -15,6 +15,7 @@ Rendered at 2x and downsampled so the curve and hairlines are smooth.
 
 import math
 import datetime
+import random
 
 from PIL import Image, ImageDraw
 
@@ -355,23 +356,107 @@ def _draw_title_and_axis(c, ctx, X):
         t += datetime.timedelta(hours=3)
 
 
-def _moon_glyph(c, cx, cy, r, frac, illum):
-    """True-phase moon: dark disk with the illuminated lune in paper."""
-    c.dot(cx, cy, r, fill=T.INK_SOFT)
+def _galileo_moon(c, cx, cy, r, frac, illum, rng):
+    """A Galileo-style moon: a stippled, cratered sphere at the true phase.
+    Tone is dot-density (e-ink-safe), not gray wash. The lit lune is clean
+    paper; the dark side is a graded stipple wash densest at a jagged
+    terminator; a few real craters (selenographic positions, foreshortened
+    toward the limb) read as faint light-gray crescent dimples that don't
+    compete with the dark side."""
     waxing = frac < 0.5
-    rx = r * (1 - 2 * illum)
-    steps = 48
-    poly = []
-    for i in range(steps + 1):
-        a = -math.pi / 2 + math.pi * i / steps
-        poly.append((cx + (r if waxing else -r) * math.cos(a),
-                     cy + r * math.sin(a)))
-    for i in range(steps + 1):
-        a = math.pi / 2 - math.pi * i / steps
-        poly.append((cx + (rx if waxing else -rx) * math.cos(a),
-                     cy + r * math.sin(a)))
-    if illum > 0.01:
-        c.polygon(poly, fill=T.PAPER)
+    rxe = r * (1 - 2 * illum)
+    ph1, ph2 = rng.uniform(0, 6.28), rng.uniform(0, 6.28)
+
+    def termx(dy):                              # terminator x, roughened (jagged)
+        base = rxe * math.sqrt(max(0.0, 1 - (dy / r) ** 2))
+        rough = 0.05 * r * math.sin(dy / r * 7 + ph1) \
+            + 0.03 * r * math.sin(dy / r * 17 + ph2)
+        return base + (rough if waxing else -rough)
+
+    def off_of(dx, dy):                         # >0 lit, <0 dark
+        return (dx - termx(dy)) if waxing else (-dx - termx(dy))
+
+    # graded black stipple: clean lit side, dark side densest at the terminator
+    step = 3.0
+    g = -r
+    while g <= r:
+        gx = -r
+        while gx <= r:
+            dx = gx + rng.uniform(-1.4, 1.4)
+            dy = g + rng.uniform(-1.4, 1.4)
+            gx += step
+            if dx * dx + dy * dy > r * r:
+                continue
+            off = off_of(dx, dy)
+            near = abs(off) < 0.10 * r
+            if off >= 0:
+                p = 0.30 if near else 0.0
+            else:
+                limb = min(1.0, -off / (abs(termx(dy)) + 0.6 * r))
+                p = 0.92 - 0.6 * limb
+                if near:
+                    p = 0.5
+            if rng.random() < p:
+                c.dot(cx + dx, cy + dy, rng.uniform(0.6, 1.5), fill=T.INK)
+        g += step
+
+    # a few famous craters (lon°E+, lat°N+, rel-size), orthographically placed
+    sun = 1 if waxing else -1
+    real = [(-11, -43, 0.11),   # Tycho
+            (-20, 10, 0.10),    # Copernicus
+            (-9, 51, 0.085),    # Plato
+            (26, -11, 0.08),    # Theophilus
+            (61, -9, 0.08),     # Langrenus
+            (-40, -18, 0.08)]   # Gassendi
+    craters = []
+    for lon, lat, sz in real:
+        la, lo = math.radians(lat), math.radians(lon)
+        craters.append((r * 0.92 * math.cos(la) * math.sin(lo),
+                        -r * 0.92 * math.sin(la), sz * r))
+    tcy = 0.06 * r                              # prominent crater at terminator
+    craters.append((termx(tcy) + sun * 0.05 * r, tcy, 0.11 * r))
+    for cdx, cdy, cr in craters:
+        d2 = cdx * cdx + cdy * cdy
+        if d2 > (r - cr) ** 2 or off_of(cdx, cdy) < -0.16 * r:
+            continue                            # skip craters buried in shadow
+        litc = off_of(cdx, cdy) >= 0
+        dark = 150 if litc else 120             # light gray: a faint dimple
+        d = math.sqrt(d2) or 1.0
+        rho = d / r
+        rhx, rhy = cdx / d, cdy / d             # radial (outward) unit vector
+        thx, thy = -rhy, rhx                    # tangential unit vector
+        fore = max(0.16, math.sqrt(1 - rho * rho))   # radial foreshorten factor
+
+        def place(u, v):                        # crater surface (u,v) → screen
+            radc = (u * rhx + v * rhy) * fore
+            tanc = u * thx + v * thy
+            return (cr * (radc * rhx + tanc * thx),
+                    cr * (radc * rhy + tanc * thy))
+
+        # interior shadow as a crescent LUNE between the rim and an inner
+        # ellipse — tapers to cusps at top & bottom (not abrupt), sun side
+        cterm = 0.3
+        for _ in range(int(cr * cr * 1.6) + 14):
+            ang = rng.uniform(0, 2 * math.pi)
+            rr = math.sqrt(rng.random())
+            u, v = rr * math.cos(ang), rr * math.sin(ang)
+            if u * sun > cterm * math.sqrt(max(0.0, 1 - v * v)) \
+                    and rng.random() < 0.6:
+                ox, oy = place(u, v)
+                c.dot(cx + cdx + ox, cy + cdy + oy, rng.uniform(0.6, 1.2),
+                      fill=dark)
+        # a little cast shadow just outside the anti-sun rim, tapered at the ends
+        term_prox = max(0.0, 1.0 - abs(off_of(cdx, cdy)) / (0.5 * r))
+        rmax = 1.1 + 0.35 * term_prox
+        for _ in range(int(cr * cr * 0.45) + 5):
+            ang = rng.uniform(0, 2 * math.pi)
+            rr = rng.uniform(1.0, rmax)
+            u, v = rr * math.cos(ang), rr * math.sin(ang)
+            if u * sun < 0 and rng.random() < 0.45 * (1 - v * v):
+                ox, oy = place(u, v)
+                c.dot(cx + cdx + ox, cy + cdy + oy, rng.uniform(0.6, 1.0),
+                      fill=dark)
+
     c.dot(cx, cy, r, fill=None, outline=T.INK, width=2)
 
 
@@ -381,7 +466,8 @@ def _draw_moon(c, ctx, X):
     moon = ctx["moon"]
     track = moon["track"]
     frac, illum = moon["frac"], moon["illum"]
-    r = 40
+    r = 80                  # ~2x the previous 40px radius
+    top_pin = 40            # the old radius: keeps the top edge where it was
 
     def moon_y(alt):
         a = max(0.0, min(alt, T.ALT_SCALE))
@@ -393,7 +479,10 @@ def _draw_moon(c, ctx, X):
         if a1 > 0 and a1 >= a0 and a1 >= a2:
             x = X(ti)
             if T.PLOT_LEFT + r < x < T.PLOT_RIGHT - r:
-                _moon_glyph(c, x, moon_y(a1), r, frac, illum)
+                # grow downward from the old top edge (top stays put); seed by
+                # transit time so the stipple is stable across refreshes
+                _galileo_moon(c, x, moon_y(a1) - top_pin + r, r, frac, illum,
+                              random.Random(int(ti.timestamp())))
 
 
 def _draw_curve(c, curve, X, now):
