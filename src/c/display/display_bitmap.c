@@ -148,13 +148,15 @@ bool display_bitmap(const char* file_path) {
     int do_full = daily || forced || hour_rolled || rw <= 0 || rh <= 0;
 
     if (do_full) {
-        // Every full refresh does an INIT clear (mode 0, the white flash) before
-        // the GC16 repaint. The window scrolls each hour, so the moon, date
-        // labels and tide line all change position; a GC16-only repaint only
-        // softens the ghost of their previous position, while the INIT clear
-        // actually wipes it. (daily/forced are folded in — they're full too.)
-        printf("Full INIT clear + GC16 refresh...\n");
-        IT8951_Clear_Refresh();
+        // Every full refresh deep-cleans (black<->white INIT cycles) before the
+        // GC16 repaint. The window scrolls each hour, so the moon, date labels
+        // and tide line all change position; a single white pass only softens
+        // the ghost of their old position. A deploy/daily clean gets more cycles
+        // to clear deep burn-in; the hourly clean gets one (one black+white).
+        int cycles = (forced || daily) ? 4 : 1;
+        printf("Deep clear (%d cycle%s) + GC16 refresh...\n",
+               cycles, cycles == 1 ? "" : "s");
+        IT8951_Deep_Clear(cycles);
         IT8951_BMP_Example(0, 0, (char*)file_path);
     } else {
         printf("Partial GC16 refresh of now-marker strip [%d %d %d %d]...\n",

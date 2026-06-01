@@ -784,6 +784,38 @@ void IT8951_Clear_Refresh(void)
 	IT8951DisplayArea(0, 0, gstI80DevInfo.usPanelW, gstI80DevInfo.usPanelH, 0);
 }
 
+// Deep clean: drive the whole panel black<->white `cycles` times with the INIT
+// waveform. A single white pass (Clear_Refresh) doesn't fully reset deep/burnt-in
+// ghosting; alternating black and white exercises every pixel and clears it.
+// More cycles = cleaner but more flashing.
+void IT8951_Deep_Clear(int cycles)
+{
+	IT8951LdImgInfo stLdImgInfo;
+	IT8951AreaImgInfo stAreaImgInfo;
+
+	stLdImgInfo.usEndianType     = IT8951_LDIMG_L_ENDIAN;
+	stLdImgInfo.usPixelFormat    = IT8951_8BPP;
+	stLdImgInfo.usRotate         = IT8951_ROTATE_0;
+	stLdImgInfo.ulImgBufBaseAddr = gulImgBufAddr;
+	stLdImgInfo.ulStartFBAddr    = (uint32_t)gpFrameBuf;
+	stAreaImgInfo.usX      = 0;
+	stAreaImgInfo.usY      = 0;
+	stAreaImgInfo.usWidth  = gstI80DevInfo.usPanelW;
+	stAreaImgInfo.usHeight = gstI80DevInfo.usPanelH;
+
+	if (cycles < 1) cycles = 1;
+	for (int k = 0; k < cycles; k++) {
+		uint8_t shades[2] = {0x00, 0xff};   // black, then white
+		for (int s = 0; s < 2; s++) {
+			IT8951WaitForDisplayReady();
+			EPD_Clear(shades[s]);
+			IT8951HostAreaPackedPixelWrite(&stLdImgInfo, &stAreaImgInfo);
+			IT8951DisplayArea(0, 0, gstI80DevInfo.usPanelW,
+			                  gstI80DevInfo.usPanelH, 0);
+		}
+	}
+}
+
 void IT8951_BMP_Example(uint32_t x, uint32_t y,char *path)
 {
 	IT8951LdImgInfo stLdImgInfo;
