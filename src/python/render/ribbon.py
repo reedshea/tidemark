@@ -143,7 +143,7 @@ def render(ctx):
     curve = [(X(t), Y(h)) for t, h in zip(series.times, series.heights)]
 
     _draw_night_bands(c, ctx, X, curve)
-    _draw_engraved_sea(c, curve)
+    _draw_engraved_sea(c, curve, X(now))
     _draw_title_and_axis(c, ctx, X)
     _draw_moon(c, ctx, X)
     _draw_curve(c, curve, X, now)
@@ -225,26 +225,33 @@ def _draw_night_bands(c, ctx, X, curve):
         c.d = ImageDraw.Draw(c.img)
 
 
-def _draw_engraved_sea(c, curve):
+def _draw_engraved_sea(c, curve, nx):
     """Fill below the tide curve with evenly spaced hairlines (an engraving),
     clipped to the area under the curve via a polygon mask. The lines undulate
     as a gentle sum of sine swells (see _SEA_SWELL) so the sea reads as rolling
     water. One uniform line shade everywhere — day and night sea read the same;
     night is shown by the sky bands above. Pure black-on-white hairlines: ideal
-    for e-ink."""
+    for e-ink.
+
+    The wavy fill is only drawn to the RIGHT of the now-marker (`nx`); the sea
+    behind now is left blank. The partial-refresh strip travels that region, so
+    keeping it plain (not textured) lets the 5-min marker updates refresh cleanly
+    instead of accumulating ghosting in the engraving."""
     full = Image.new("L", (_s(T.WIDTH), _s(T.HEIGHT)), T.PAPER)
     fd = ImageDraw.Draw(full)
+    x_start = max(T.PLOT_LEFT, nx)
     y = T.PLOT_TOP
     i = 0
     while y <= T.HORIZON_Y:
         pts = []
-        x = T.PLOT_LEFT
+        x = x_start
         while x <= T.PLOT_RIGHT:
             yy = y + sum(a * math.sin(2 * math.pi * x / w + p + i * d)
                          for a, w, p, d in _SEA_SWELL)
             pts.append((_s(x), _s(yy)))
             x += 4
-        fd.line(pts, fill=T.SEA_LINE, width=max(1, _s(1)))
+        if len(pts) >= 2:
+            fd.line(pts, fill=T.SEA_LINE, width=max(1, _s(1)))
         y += T.SEA_LINE_GAP
         i += 1
 
