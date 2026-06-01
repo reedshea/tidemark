@@ -18,7 +18,8 @@ int main(int argc, char* argv[]) {
     // Parse command line arguments
     bool use_simulator = false;
     int force_night = -1;  // -1 = auto, 0 = day, 1 = night
-    
+    const char* image_path = NULL;  // if set, display this BMP and exit
+
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--sim") == 0) {
             use_simulator = true;
@@ -26,13 +27,16 @@ int main(int argc, char* argv[]) {
             force_night = 1;
         } else if (strcmp(argv[i], "--day") == 0) {
             force_night = 0;
+        } else if (strcmp(argv[i], "--image") == 0 && i + 1 < argc) {
+            image_path = argv[++i];
         } else if (strcmp(argv[i], "--help") == 0) {
             printf("Usage: %s [options]\n", argv[0]);
             printf("Options:\n");
-            printf("  --sim       Use simulator (forced on macOS)\n");
-            printf("  --night     Force night mode\n");
-            printf("  --day       Force day mode\n");
-            printf("  --help      Show this help\n");
+            printf("  --sim          Use simulator (forced on macOS)\n");
+            printf("  --night        Force night mode\n");
+            printf("  --day          Force day mode\n");
+            printf("  --image PATH   Display the given BMP (full refresh) and exit\n");
+            printf("  --help         Show this help\n");
             return 0;
         }
     }
@@ -60,6 +64,14 @@ int main(int argc, char* argv[]) {
         printf("Try running with sudo for proper hardware access.\n");
     }
 #endif
+
+    // One-shot: display a specific image (style experiments) and exit.
+    if (image_path != NULL) {
+        printf("Displaying image: %s\n", image_path);
+        bool ok = display_bitmap(image_path);
+        display_cleanup();
+        return ok ? 0 : 1;
+    }
 
     // Main loop
     time_t last_update = 0;
