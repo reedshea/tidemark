@@ -627,13 +627,17 @@ def _engrave_moon(b, ctx, durer, rng=None):
 
 
 def _galileo_moon(b, cx, cy, r, frac, illum, rng):
-    """Galileo-style moon: a stippled, cratered sphere with a rough terminator.
-    Tone is carried by dot density (e-ink-safe), not gray wash. The lit lune is
-    left mostly paper; the dark side and the terminator zone are stippled, with
-    a few craters catching light along the day/night line and mottled maria."""
+    """A Galileo-style moon as a soft ink wash. The shadows (the big dark side
+    and the small crater shadows) are drawn on a sub-layer and lightly blurred
+    so they read as smooth gray washes with a little grain rather than hard
+    pixels, then clipped to the disk so nothing spills past the rim. The dark
+    side is stippled (keeps grain at its larger size); crater shadows are filled
+    light-gray crescent lunes (smoothest). A light-gray rim, not a black one."""
+    ss = SS
     waxing = frac < 0.5
     rxe = r * (1 - 2 * illum)
     ph1, ph2 = rng.uniform(0, 6.28), rng.uniform(0, 6.28)
+    sun = 1 if waxing else -1
 
     def termx(dy):                              # terminator x, roughened (jagged)
         base = rxe * math.sqrt(max(0.0, 1 - (dy / r) ** 2))
@@ -644,8 +648,19 @@ def _galileo_moon(b, cx, cy, r, frac, illum, rng):
     def off_of(dx, dy):                         # >0 lit, <0 dark
         return (dx - termx(dy)) if waxing else (-dx - termx(dy))
 
-    # graded black stipple: clean lit side, dark side densest at the terminator
-    step = 3.0
+    # --- shadows go on a sub-layer so we can blur + clip them ----------------
+    pad = 4
+    D = int(round((2 * r + 2 * pad) * ss))
+    lc = D / 2.0
+    wash = Image.new("L", (D, D), 255)
+    wd = ImageDraw.Draw(wash)
+
+    def L(dx, dy):                              # moon-relative logical → sublayer
+        return (lc + dx * ss, lc + dy * ss)
+
+    # dark side: graded stipple (densest at the terminator); the blur turns it
+    # into a grainy wash
+    step = 2.3
     g = -r
     while g <= r:
         gx = -r
@@ -653,27 +668,23 @@ def _galileo_moon(b, cx, cy, r, frac, illum, rng):
             dx = gx + rng.uniform(-1.4, 1.4)
             dy = g + rng.uniform(-1.4, 1.4)
             gx += step
-            if dx * dx + dy * dy > r * r:
-                continue
-            off = off_of(dx, dy)
-            near = abs(off) < 0.10 * r
-            if off >= 0:
-                p = 0.30 if near else 0.0
-            else:
-                limb = min(1.0, -off / (abs(termx(dy)) + 0.6 * r))
-                p = 0.92 - 0.6 * limb
-                if near:
-                    p = 0.5
-            if rng.random() < p:
-                b.dot(cx + dx, cy + dy, rng.uniform(0.6, 1.5), fill=0)
+            if dx * dx + dy * dy <= r * r:
+                off = off_of(dx, dy)
+                near = abs(off) < 0.10 * r
+                if off >= 0:
+                    p = 0.30 if near else 0.0
+                else:
+                    limb = min(1.0, -off / (abs(termx(dy)) + 0.6 * r))
+                    p = 0.92 - 0.6 * limb
+                    if near:
+                        p = 0.5
+                if rng.random() < p:
+                    px, py = L(dx, dy)
+                    rad = rng.uniform(0.5, 1.1) * ss
+                    wd.ellipse([px - rad, py - rad, px + rad, py + rad], fill=0)
         g += step
 
-    # a few real craters, subtle: thin ring + a little shadow on the SUN side
-    # (orthographic projection of real selenographic lon/lat onto the disk)
-    sun = 1 if waxing else -1
-    # real craters (lon, lat, rel-size) across the near side, so several land on
-    # the lit side at any phase; orthographic projection onto the disk.
-    # (lon°E+, lat°N+, rel-size) — real selenographic positions, a few famous
+    # craters: filled gray crescent lunes (smooth after the blur)
     real = [(-11, -43, 0.11),   # Tycho
             (-20, 10, 0.10),    # Copernicus
             (-9, 51, 0.085),    # Plato
@@ -692,47 +703,48 @@ def _galileo_moon(b, cx, cy, r, frac, illum, rng):
         if d2 > (r - cr) ** 2 or off_of(cdx, cdy) < -0.16 * r:
             continue                            # skip craters buried in shadow
         litc = off_of(cdx, cdy) >= 0
-        # light gray, not near-black: a faint dimple that doesn't compete with
-        # the dark terminator side (real crater shadows aren't that distinct)
-        dark = 150 if litc else 120
+        gin = 150 if litc else 95               # interior shadow gray (light)
+        gout = 200 if litc else 150             # cast shadow gray (lighter)
         d = math.sqrt(d2) or 1.0
         rho = d / r
-        rhx, rhy = cdx / d, cdy / d             # radial (outward) unit vector
-        thx, thy = -rhy, rhx                    # tangential unit vector
-        fore = max(0.16, math.sqrt(1 - rho * rho))   # radial foreshorten factor
+        rhx, rhy = cdx / d, cdy / d
+        thx, thy = -rhy, rhx
+        fore = max(0.16, math.sqrt(1 - rho * rho))
 
         def place(u, v):                        # crater surface (u,v) → screen
-            radc = (u * rhx + v * rhy) * fore   # foreshorten the radial component
+            radc = (u * rhx + v * rhy) * fore
             tanc = u * thx + v * thy
             return (cr * (radc * rhx + tanc * thx),
                     cr * (radc * rhy + tanc * thy))
 
-        # interior shadow as a crescent LUNE between the rim and an inner
-        # ellipse, so it tapers to cusps at top & bottom (not abrupt), sun side
-        cterm = 0.3
-        for _ in range(int(cr * cr * 1.6) + 14):
-            ang = rng.uniform(0, 2 * math.pi)
-            rr = math.sqrt(rng.random())
-            u, v = rr * math.cos(ang), rr * math.sin(ang)
-            if u * sun > cterm * math.sqrt(max(0.0, 1 - v * v)) \
-                    and rng.random() < 0.6:
-                ox, oy = place(u, v)
-                b.dot(cx + cdx + ox, cy + cdy + oy, rng.uniform(0.6, 1.2),
-                      fill=dark)
-        # a little cast shadow just outside the anti-sun rim, tapered to nothing
-        # at the top & bottom so it isn't abrupt either
-        term_prox = max(0.0, 1.0 - abs(off_of(cdx, cdy)) / (0.5 * r))
-        rmax = 1.1 + 0.35 * term_prox
-        for _ in range(int(cr * cr * 0.45) + 5):
-            ang = rng.uniform(0, 2 * math.pi)
-            rr = rng.uniform(1.0, rmax)
-            u, v = rr * math.cos(ang), rr * math.sin(ang)
-            if u * sun < 0 and rng.random() < 0.45 * (1 - v * v):
-                ox, oy = place(u, v)
-                b.dot(cx + cdx + ox, cy + cdy + oy, rng.uniform(0.6, 1.0),
-                      fill=dark)
+        def lune(inner, outer):                 # crescent between two ellipse arcs
+            poly, n = [], 22
+            for k in range(n + 1):
+                v = 1 - 2.0 * k / n
+                ox, oy = place(outer * sun * math.sqrt(max(0.0, 1 - v * v)), v)
+                poly.append(L(cdx + ox, cdy + oy))
+            for k in range(n + 1):
+                v = -1 + 2.0 * k / n
+                ox, oy = place(inner * sun * math.sqrt(max(0.0, 1 - v * v)), v)
+                poly.append(L(cdx + ox, cdy + oy))
+            return poly
 
-    b.dot(cx, cy, r, fill=None, outline=0, width=2)
+        wd.polygon(lune(0.45, 1.0), fill=gin)     # interior shadow (sun-side rim)
+        wd.polygon(lune(0.8, 1.0), fill=max(20, gin - 55))  # darker rim = depth
+        wd.polygon(lune(-1.0, -1.22), fill=gout)  # a little cast shadow outside
+
+    # soften into an ink wash (keeps a little grain on the big dark side)
+    wash = wash.filter(ImageFilter.GaussianBlur(1.7 * ss))
+
+    # clip to the disk so nothing spills past the rim, then composite
+    mask = Image.new("L", (D, D), 0)
+    ImageDraw.Draw(mask).ellipse([L(-r, -r), L(r, r)], fill=255)
+    x0 = int(round((cx - r - pad) * ss))
+    y0 = int(round((cy - r - pad) * ss))
+    b.img.paste(wash, (x0, y0), mask)
+    b.d = ImageDraw.Draw(b.img)
+
+    b.dot(cx, cy, r, fill=None, outline=165, width=2)   # light-gray rim
 
 
 def render_galileo_demo(frac=0.30, illum=0.45):
