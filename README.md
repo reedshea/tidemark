@@ -17,10 +17,13 @@ SDL simulator on macOS). A Python program generates that bitmap:
 
 ```
 src/python/
-  config.py            Active location: lat/long, timezone, station, units
+  setup_location.py    One-command location setup (fetches a NOAA station)
+  config.py            Static knobs (window, units, weather); reads location.json
+  location.json        Active location (written by setup_location.py; optional)
   data/
     harmonics.py       Harmonic tide engine with full astronomical corrections
-    stations.py        NOAA harmonic constituents per station
+    stations.py        Loads station records from data/stations/*.json
+    stations/          One JSON file per tide station (pure data)
     tide.py            Tide curve + high/low extrema over a time window
     sun.py             Sunrise/sunset/twilight (NOAA solar algorithm)
     moon.py            Moon phase + rise/set + altitude arc
@@ -29,9 +32,10 @@ src/python/
     theme.py           Palette, fonts, geometry (e-ink friendly)
     ribbon.py          The Tufte-style tide ribbon
   main.py              Assembles data + renders the BMP
-src/c/                 Display host (main loop, BMP load, IT8951/SDL backends)
+src/c/                 Display host (main loop, refresh strategy, driver layer)
 sim/                   SDL2 simulator for desktop iteration
-lib/IT8951/            Waveshare driver
+lib/IT8951/            Waveshare driver (vendored)
+tests/                 unittest suite (tide math, astronomy, render smoke test)
 ```
 
 ### Accurate tides, fully offline
@@ -91,12 +95,52 @@ python3 src/python/main.py --now 2026-05-30T14:23 --output /tmp/tide.bmp   # tes
 
 The only Python dependency is **Pillow**. (`make venv` sets up a virtualenv.)
 
-Deploy to a Pi over SSH with `./dev.sh` (rsync + build + run) or `./deploy.sh`
-(installs a systemd service).
+Run the tests with `python3 -m unittest discover -s tests`.
 
 ## Configuring a location
 
-Everything location-specific lives in `src/python/config.py`: name, latitude,
-longitude, timezone, units (`ft`/`m`), and which harmonic station to use. Add a
-station's NOAA constituents to `src/python/data/stations.py` and point
-`config.LOCATION` at it.
+Point Tidemark at a NOAA tide station and it fetches everything it needs —
+harmonic constituents, coordinates, timezone, and datums — in one command:
+
+```bash
+python3 src/python/setup_location.py 8447368            # by NOAA station id
+python3 src/python/setup_location.py --near 33.34,-118.33   # nearest station
+python3 src/python/setup_location.py 9410079 --name "Avalon" --subtitle "Santa Catalina Island"
+```
+
+Find your station id at <https://tidesandcurrents.noaa.gov> (search your area,
+then read the 7-digit id from the station page). Setup writes two files:
+`data/stations/<id>.json` (the harmonic record) and `location.json` (the active
+selection that `config.py` reads). Network is needed only here, at setup;
+rendering stays fully offline. Window length, units, and the optional weather
+panel are static knobs in `config.py`.
+
+**Outside the US?** NOAA covers the US and its territories. For other coasts,
+hand-write a `data/stations/<id>.json` by the same schema using published
+harmonic constants — for example the global **TICON-4** dataset (4,383 tide
+gauges, CC-BY): <https://doi.org/10.17882/109129>. Then set `station_id` in
+`location.json` and fill in your latitude/longitude/timezone.
+
+## Deploy to a Raspberry Pi
+
+```bash
+export TIDEMARK_PI=pi@raspberrypi.local     # your Pi's user@host
+./deploy.sh                                 # sync, build, install the timer
+```
+
+`deploy.sh` syncs the repo, builds on the Pi, installs a systemd timer that
+refreshes the panel every 5 minutes, and leaves it on a clean full repaint. The
+Pi needs the **bcm2835** library installed (the IT8951 driver links against it);
+build it once from <https://www.airspayce.com/mikem/bcm2835/>.
+
+## Troubleshooting
+
+- **`Failed to initialize display` / GPIO errors on the Pi** — the IT8951 driver
+  needs root for SPI/GPIO; run via the systemd service (or `sudo`).
+- **Garbled or sliver display after deploy** — `deploy.sh` forces a clean
+  full-clear baseline; if you ran `./tidemark` manually while the timer was
+  live, two processes hit the SPI bus. Stop the timer first (`deploy.sh` does).
+- **`tide renderer not found`** — set `TIDEMARK_HOME` to the project root, or
+  launch from it (the binary also accepts being run from `build/`).
+- **Plain/fallback fonts** — the bundled ET Book lives in `assets/fonts/`; if
+  text looks wrong, confirm that directory shipped with the deploy.

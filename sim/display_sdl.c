@@ -93,16 +93,20 @@ static bool sdl_init(DisplayConfig* config) {
     // Important: Make sure the texture blending mode is set to NONE for proper grayscale rendering
     SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_NONE);
 
-    // Load font at larger size for better readability
-    font = TTF_OpenFont("/System/Library/Fonts/Supplemental/Arial.ttf", 40);
+    // Load a font for draw_text(). The tide display is a pre-rendered BMP and
+    // doesn't use draw_text, so a missing font is only a warning (keeps the
+    // simulator runnable on Linux/CI, not just macOS).
+    const char* font_paths[] = {
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    };
+    for (size_t i = 0; i < sizeof(font_paths) / sizeof(font_paths[0]); i++) {
+        font = TTF_OpenFont(font_paths[i], 40);
+        if (font) break;
+    }
     if (!font) {
-        printf("Failed to load font: %s\n", TTF_GetError());
-        SDL_DestroyTexture(texture);
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
-        TTF_Quit();
-        SDL_Quit();
-        return false;
+        printf("Warning: no font found; draw_text() disabled (chart still renders)\n");
     }
 
     // Allocate framebuffer
@@ -167,6 +171,7 @@ static void sdl_update(void) {
 }
 
 static void sdl_draw_text(uint16_t x, uint16_t y, const char* text, uint8_t color, uint8_t bg_color) {
+    if (!font) return;  // no font loaded; draw_text is a no-op
     SDL_Color fg = get_sdl_color(color);
     SDL_Color bg = get_sdl_color(bg_color);
     
@@ -232,11 +237,55 @@ static uint8_t* sdl_get_framebuffer(void) {
     return framebuffer;
 }
 
+// Load a BMP and blit it into the framebuffer. The simulator has no ghosting,
+// so the refresh mode and partial rectangle are ignored — every present is a
+// full repaint.
+static bool sdl_present(const char* path, RefreshMode mode,
+                        int rx, int ry, int rw, int rh) {
+    (void)mode; (void)rx; (void)ry; (void)rw; (void)rh;
+
+    SDL_Surface* bitmap = SDL_LoadBMP(path);
+    if (!bitmap) {
+        printf("Error loading bitmap: %s\n", SDL_GetError());
+        return false;
+    }
+    if (bitmap->w != DISPLAY_WIDTH || bitmap->h != DISPLAY_HEIGHT) {
+        printf("Warning: Bitmap dimensions (%d x %d) don't match display (%d x %d)\n",
+               bitmap->w, bitmap->h, DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    }
+
+    SDL_LockSurface(bitmap);
+    uint8_t* src = (uint8_t*)bitmap->pixels;
+    int bpp = bitmap->format->BytesPerPixel;
+    for (int y = 0; y < DISPLAY_HEIGHT && y < bitmap->h; y++) {
+        for (int x = 0; x < DISPLAY_WIDTH && x < bitmap->w; x++) {
+            int src_pos = y * bitmap->pitch + x * bpp;
+            int dst_pos = y * DISPLAY_WIDTH + x;
+            uint8_t gray;
+            if (bpp == 1) {
+                gray = src[src_pos];
+            } else if (bpp == 3 || bpp == 4) {
+                uint8_t r = src[src_pos], g = src[src_pos + 1], b = src[src_pos + 2];
+                gray = (uint8_t)(0.299 * r + 0.587 * g + 0.114 * b);
+            } else {
+                gray = DISPLAY_WHITE;
+            }
+            framebuffer[dst_pos] = gray;
+        }
+    }
+    SDL_UnlockSurface(bitmap);
+    SDL_FreeSurface(bitmap);
+
+    sdl_update();
+    return true;
+}
+
 // Create and return the SDL display interface
 DisplayInterface sdl_interface = {
     .init = sdl_init,
     .cleanup = sdl_cleanup,
     .update = sdl_update,
     .draw_text = sdl_draw_text,
-    .get_framebuffer = sdl_get_framebuffer
+    .get_framebuffer = sdl_get_framebuffer,
+    .present = sdl_present
 };

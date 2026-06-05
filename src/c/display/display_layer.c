@@ -60,3 +60,12 @@ void display_draw_text(uint16_t x, uint16_t y, const char* text, uint8_t color, 
         active_interface->draw_text(x, y, text, color, bg_color);
     }
 }
+
+bool display_present(const char* path, RefreshMode mode,
+                     int rx, int ry, int rw, int rh)
+{
+    if (active_interface && active_interface->present) {
+        return active_interface->present(path, mode, rx, ry, rw, rh);
+    }
+    return false;
+}

@@ -1,120 +1,63 @@
 #!/bin/bash
-# Deployment script for Tidemark on Raspberry Pi
+set -e
+# Deploy Tidemark to a Raspberry Pi: sync, build, install/refresh the systemd
+# timer, and leave the panel on a clean full refresh.
+#
+# Configure your Pi (env vars, or a local deploy.env that this sources):
+#   TIDEMARK_PI          user@host of the Pi   (e.g. pi@raspberrypi.local)
+#   TIDEMARK_REMOTE_DIR  install dir on the Pi (default: tidemark, under $HOME)
+#
+# Prerequisite on the Pi: the bcm2835 library must be installed (the IT8951
+# driver links against it). See the README.
 
-# Configuration
-PI_USER="pi"
-PI_HOST="raspberrypi.local"
-PI_DIR="/home/pi/tidemark"
-PI_DEPENDENCIES="python3-pip python3-pil python3-numpy"
+[ -f deploy.env ] && . ./deploy.env
+PI="${TIDEMARK_PI:?set TIDEMARK_PI=user@host, e.g. pi@raspberrypi.local}"
+REMOTE_DIR="${TIDEMARK_REMOTE_DIR:-tidemark}"
 
-# Colors for output
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m' # No Color
+# The IT8951 panel corrupts if two processes hit the SPI bus at once, so never
+# run ./tidemark manually while the timer is live. Sequence below: stop the
+# timer and any in-flight run -> sync -> install deps -> build -> one clean
+# full-clear baseline -> (re)install the units -> start the timer.
 
-echo -e "${GREEN}Tidemark Deployment Script${NC}"
-echo "=================================="
-echo
+# 1. Stop the timer AND any in-flight service run; confirm no tidemark process
+#    is left holding the SPI bus before we run the manual baseline below.
+ssh "$PI" 'sudo systemctl stop tidemark.timer tidemark.service 2>/dev/null
+    sudo pkill -9 -x tidemark 2>/dev/null
+    sleep 1
+    if pgrep -x tidemark >/dev/null; then
+        echo "A tidemark process is still running — aborting to avoid SPI collision"
+        exit 1
+    fi' || { echo "Failed to stop timer/service cleanly"; exit 1; }
 
-# Build locally first
-echo -e "${YELLOW}Building Tidemark locally...${NC}"
-cd build
-make clean
-make
-if [ $? -ne 0 ]; then
-    echo -e "${RED}Build failed! Aborting deployment.${NC}"
-    exit 1
-fi
-cd ..
+# 2. Sync the working tree (skip build artifacts and the local venv). Note we DO
+#    copy location.json so the Pi shows the location you set up locally.
+#    __pycache__ is excluded: the service runs as root and its root-owned .pyc
+#    dirs would block rsync; Python regenerates them anyway.
+rsync -av --exclude '.git' --exclude '*.o' --exclude 'tidemark' \
+    --exclude 'tidemark_sim' --exclude 'venv' --exclude '__pycache__' \
+    ./ "$PI":"$REMOTE_DIR"/ \
+    || { echo "Sync failed"; exit 1; }
 
-# Check if Raspberry Pi is reachable
-echo -e "${YELLOW}Checking connection to Raspberry Pi...${NC}"
-ping -c 1 $PI_HOST > /dev/null
-if [ $? -ne 0 ]; then
-    echo -e "${RED}Cannot reach $PI_HOST. Check connection and hostname.${NC}"
-    exit 1
-fi
+# 3. On the Pi: venv (Pillow only), install systemd units with the real install
+#    path substituted in, build, run a guarded clean baseline, start the timer.
+ssh "$PI" "set -e
+    cd \"$REMOTE_DIR\"
+    HOME_ABS=\$(pwd)
+    sudo apt-get update -qq && sudo apt-get install -y python3-venv >/dev/null
+    [ -d venv ] || python3 -m venv venv
+    ./venv/bin/pip install -q --upgrade pip pillow
+    sed \"s#__TIDEMARK_HOME__#\$HOME_ABS#g\" deploy/tidemark.service \
+        | sudo tee /etc/systemd/system/tidemark.service >/dev/null
+    sudo cp deploy/tidemark.timer /etc/systemd/system/tidemark.timer
+    sudo systemctl daemon-reload
+    cd build && make clean && make
+    # One clean full-clear baseline. timeout guards against a stuck SPI bus.
+    # Then clear the partial-refresh token so the first timer fire is a full
+    # repaint (a partial right after deploy once left the panel showing a sliver).
+    sudo env TIDEMARK_HOME=\$HOME_ABS TIDEMARK_FULL_CLEAR=1 timeout 150 ./tidemark
+    sudo rm -f /run/tidemark.state
+    sudo systemctl enable --now tidemark.timer
+    echo \"timer=\$(systemctl is-active tidemark.timer)\"" \
+    || { echo "Remote install/build/baseline failed"; exit 1; }
 
-# Create directory structure on Pi
-echo -e "${YELLOW}Creating directories on Raspberry Pi...${NC}"
-ssh $PI_USER@$PI_HOST "mkdir -p $PI_DIR/src/c/display $PI_DIR/src/python/render $PI_DIR/src/python/data $PI_DIR/lib/IT8951 $PI_DIR/build"
-
-# Install dependencies on Pi
-echo -e "${YELLOW}Installing dependencies on Raspberry Pi...${NC}"
-ssh $PI_USER@$PI_HOST "sudo apt-get update && sudo apt-get install -y $PI_DEPENDENCIES"
-
-# Copy files to Pi
-echo -e "${YELLOW}Copying files to Raspberry Pi...${NC}"
-
-# Copy Python files
-scp src/python/main.py src/python/config.py $PI_USER@$PI_HOST:$PI_DIR/src/python/
-scp src/python/render/*.py $PI_USER@$PI_HOST:$PI_DIR/src/python/render/
-scp src/python/data/*.py $PI_USER@$PI_HOST:$PI_DIR/src/python/data/
-
-# Copy C files
-scp src/c/main.c $PI_USER@$PI_HOST:$PI_DIR/src/c/
-scp src/c/display/*.c src/c/display/*.h $PI_USER@$PI_HOST:$PI_DIR/src/c/display/
-
-# Copy library files
-scp -r lib/IT8951/* $PI_USER@$PI_HOST:$PI_DIR/lib/IT8951/
-
-# Copy build files
-scp build/Makefile $PI_USER@$PI_HOST:$PI_DIR/build/
-
-# Copy README and other files
-scp README.md $PI_USER@$PI_HOST:$PI_DIR/
-scp CLAUDE.md $PI_USER@$PI_HOST:$PI_DIR/ 2>/dev/null || :  # Optional file
-
-# Make Python scripts executable
-ssh $PI_USER@$PI_HOST "chmod +x $PI_DIR/src/python/main.py $PI_DIR/src/python/render/*.py $PI_DIR/src/python/data/*.py"
-
-# Create Python virtual environment on Pi (if needed)
-echo -e "${YELLOW}Setting up Python virtual environment on Raspberry Pi...${NC}"
-ssh $PI_USER@$PI_HOST "cd $PI_DIR && python3 -m venv venv && . venv/bin/activate && pip3 install pillow"
-
-# Create systemd service file
-echo -e "${YELLOW}Setting up systemd service...${NC}"
-cat > tidemark.service << EOF
-[Unit]
-Description=Tidemark E-Ink Tide Chart Display
-After=network.target
-
-[Service]
-Environment=TIDEMARK_DAEMON=1
-WorkingDirectory=$PI_DIR/build
-ExecStart=$PI_DIR/build/tidemark
-Restart=on-failure
-User=$PI_USER
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Copy and enable service
-scp tidemark.service $PI_USER@$PI_HOST:/tmp/
-ssh $PI_USER@$PI_HOST "sudo mv /tmp/tidemark.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable tidemark.service"
-
-# Build on Pi
-echo -e "${YELLOW}Building on Raspberry Pi...${NC}"
-ssh $PI_USER@$PI_HOST "cd $PI_DIR/build && make clean && make"
-
-# Start the service
-echo -e "${YELLOW}Starting Tidemark service...${NC}"
-ssh $PI_USER@$PI_HOST "sudo systemctl restart tidemark.service"
-
-# Create a simple script to update manually
-cat > update_tide.sh << EOF
-#!/bin/bash
-cd $PI_DIR/build
-./tidemark
-EOF
-
-scp update_tide.sh $PI_USER@$PI_HOST:$PI_DIR/
-ssh $PI_USER@$PI_HOST "chmod +x $PI_DIR/update_tide.sh"
-
-echo -e "${GREEN}Deployment complete!${NC}"
-echo "You can manually update the display by running: $PI_DIR/update_tide.sh"
-echo "To check service status: sudo systemctl status tidemark.service"
-echo "To stop service: sudo systemctl stop tidemark.service"
-echo "To start service: sudo systemctl start tidemark.service"
+echo "Deployed to $PI:$REMOTE_DIR. The timer refreshes the panel every 5 minutes."

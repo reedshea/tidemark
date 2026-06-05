@@ -1,59 +1,62 @@
 #!/usr/bin/env python3
 """
-Harmonic constituent data for tide stations.
+Tide station harmonic data, loaded from JSON.
 
-Amplitudes are in meters, phases (g) in degrees referenced to GMT, and speeds
-in degrees/hour. These are the published NOAA harmonic constants; the
-astronomical corrections that turn them into accurate predictions live in
-harmonics.py.
+Each station lives in its own file under ``data/stations/<station_id>.json`` so
+new locations are pure data — drop in a file (or let ``setup_location.py``
+generate one from NOAA) and point the config at its id; no code changes.
+
+A station record has:
+    station_id       NOAA (or other) station identifier, a string
+    name             human-readable station name
+    mean_tide_level  meters above the chart datum (NOAA: MTL - MLLW); sets where
+                     the curve's mid-line sits on the fixed vertical scale
+    constituents     list of {name, amplitude (m), phase (deg, ref. GMT),
+                     speed (deg/hour)} — the published harmonic constants. The
+                     astronomical corrections that make them accurate live in
+                     harmonics.py.
 """
 
-GREAT_HILL = {
-    "station_id": "8447368",
-    "name": "Great Hill, Massachusetts",
-    "mean_tide_level": 0.590,   # meters, relative to Mean Lower Low Water
-    "constituents": [
-        {"name": "M2", "amplitude": 0.559, "phase": 12.4, "speed": 28.984104},
-        {"name": "S2", "amplitude": 0.125, "phase": 34.6, "speed": 30.0},
-        {"name": "N2", "amplitude": 0.142, "phase": 356.1, "speed": 28.43973},
-        {"name": "K1", "amplitude": 0.063, "phase": 169.5, "speed": 15.041069},
-        {"name": "M4", "amplitude": 0.095, "phase": 43.2, "speed": 57.96821},
-        {"name": "O1", "amplitude": 0.052, "phase": 200.1, "speed": 13.943035},
-        {"name": "M6", "amplitude": 0.01, "phase": 299.5, "speed": 86.95232},
-        {"name": "MK3", "amplitude": 0.014, "phase": 15.7, "speed": 44.025173},
-        {"name": "S4", "amplitude": 0.008, "phase": 1.5, "speed": 60.0},
-        {"name": "MN4", "amplitude": 0.042, "phase": 351.5, "speed": 57.423832},
-        {"name": "NU2", "amplitude": 0.022, "phase": 350.3, "speed": 28.512583},
-        {"name": "S6", "amplitude": 0.001, "phase": 291.3, "speed": 90.0},
-        {"name": "MU2", "amplitude": 0.028, "phase": 355.5, "speed": 27.968208},
-        {"name": "2N2", "amplitude": 0.023, "phase": 342.4, "speed": 27.895355},
-        {"name": "OO1", "amplitude": 0.006, "phase": 174.0, "speed": 16.139101},
-        {"name": "LAM2", "amplitude": 0.002, "phase": 60.4, "speed": 29.455626},
-        {"name": "S1", "amplitude": 0.011, "phase": 145.3, "speed": 15.0},
-        {"name": "M1", "amplitude": 0.005, "phase": 186.1, "speed": 14.496694},
-        {"name": "J1", "amplitude": 0.005, "phase": 158.1, "speed": 15.5854435},
-        {"name": "MM", "amplitude": 0.017, "phase": 73.9, "speed": 0.5443747},
-        {"name": "SSA", "amplitude": 0.016, "phase": 75.1, "speed": 0.0821373},
-        {"name": "SA", "amplitude": 0.061, "phase": 145.3, "speed": 0.0410686},
-        {"name": "MSF", "amplitude": 0.0, "phase": 0.0, "speed": 1.0158958},
-        {"name": "MF", "amplitude": 0.0, "phase": 0.0, "speed": 1.0980331},
-        {"name": "RHO", "amplitude": 0.004, "phase": 193.0, "speed": 13.471515},
-        {"name": "Q1", "amplitude": 0.009, "phase": 176.8, "speed": 13.398661},
-        {"name": "T2", "amplitude": 0.011, "phase": 22.0, "speed": 29.958933},
-        {"name": "R2", "amplitude": 0.005, "phase": 264.6, "speed": 30.041067},
-        {"name": "2Q1", "amplitude": 0.003, "phase": 203.6, "speed": 12.854286},
-        {"name": "P1", "amplitude": 0.019, "phase": 176.9, "speed": 14.958931},
-        {"name": "2SM2", "amplitude": 0.004, "phase": 42.5, "speed": 31.015896},
-        {"name": "M3", "amplitude": 0.009, "phase": 15.5, "speed": 43.47616},
-        {"name": "L2", "amplitude": 0.014, "phase": 12.5, "speed": 29.528479},
-        {"name": "2MK3", "amplitude": 0.016, "phase": 357.2, "speed": 42.92714},
-        {"name": "K2", "amplitude": 0.033, "phase": 30.5, "speed": 30.082138},
-        {"name": "M8", "amplitude": 0.002, "phase": 188.2, "speed": 115.93642},
-        {"name": "MS4", "amplitude": 0.026, "phase": 117.9, "speed": 58.984104},
-    ],
-}
+import os
+import json
 
-STATIONS = {
-    "great_hill": GREAT_HILL,
-    "8447368": GREAT_HILL,
-}
+STATIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "stations")
+
+# The station bundled with the repo so a fresh clone runs out of the box.
+DEFAULT_STATION_ID = "8447368"   # Great Hill, Buzzards Bay, MA
+
+
+def station_path(station_id):
+    """Filesystem path to a station's JSON record."""
+    return os.path.join(STATIONS_DIR, f"{station_id}.json")
+
+
+def available_stations():
+    """Sorted list of station ids that have a JSON record on disk."""
+    if not os.path.isdir(STATIONS_DIR):
+        return []
+    return sorted(f[:-5] for f in os.listdir(STATIONS_DIR)
+                  if f.endswith(".json"))
+
+
+def load_station(station_id):
+    """Load a station record by id.
+
+    Raises FileNotFoundError with a helpful hint if the station isn't present
+    (e.g. the user named a station they haven't fetched yet).
+    """
+    path = station_path(station_id)
+    try:
+        with open(path) as fh:
+            return json.load(fh)
+    except FileNotFoundError:
+        have = ", ".join(available_stations()) or "(none)"
+        raise FileNotFoundError(
+            f"No tide station '{station_id}' in {STATIONS_DIR}. "
+            f"Available: {have}. Add one with:\n"
+            f"    python3 src/python/setup_location.py {station_id}")
+
+
+# Bundled default, eagerly loaded for convenience / backward compatibility.
+GREAT_HILL = load_station(DEFAULT_STATION_ID)

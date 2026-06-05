@@ -14,8 +14,17 @@ endif
 
 # Platform-specific settings
 ifeq ($(PLATFORM),macos)
-    PLATFORM_CFLAGS = -I/opt/homebrew/include/SDL2 -DPLATFORM_MACOS
-    PLATFORM_LDFLAGS = -L/opt/homebrew/lib -lSDL2 -lSDL2_ttf
+    # The SDL simulator. Resolve SDL2 via pkg-config when available (Linux, and
+    # Homebrew installs that ship .pc files) so it builds on any OS; fall back to
+    # the default Homebrew prefix otherwise.
+    SDL_CFLAGS := $(shell pkg-config --cflags sdl2 SDL2_ttf 2>/dev/null)
+    SDL_LDFLAGS := $(shell pkg-config --libs sdl2 SDL2_ttf 2>/dev/null)
+    ifeq ($(strip $(SDL_CFLAGS)$(SDL_LDFLAGS)),)
+        SDL_CFLAGS = -I/opt/homebrew/include/SDL2
+        SDL_LDFLAGS = -L/opt/homebrew/lib -lSDL2 -lSDL2_ttf
+    endif
+    PLATFORM_CFLAGS = $(SDL_CFLAGS) -DPLATFORM_MACOS
+    PLATFORM_LDFLAGS = $(SDL_LDFLAGS)
     PLATFORM_SRCS = ../sim/display_sdl.c
     BIN = tidemark_sim
 else

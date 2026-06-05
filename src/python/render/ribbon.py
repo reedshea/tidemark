@@ -125,6 +125,12 @@ def render(ctx):
     series = ctx["series"]
     span_s = (end - start).total_seconds()
 
+    # Seed the sea-swell / moon-stipple randomness from the window start so the
+    # texture is identical for every render within an hour. That keeps the
+    # background stable under partial (now-marker only) refreshes, and makes
+    # renders reproducible for tests.
+    random.seed(int(start.timestamp()))
+
     def X(dt):
         return T.PLOT_LEFT + (dt - start).total_seconds() / span_s \
             * (T.PLOT_RIGHT - T.PLOT_LEFT)
