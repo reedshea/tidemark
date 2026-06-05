@@ -13,8 +13,8 @@ place the tide curve's mid-line. It writes two files:
 After that, `python3 main.py --output /tmp/tide.bmp` renders your location.
 
     python3 setup_location.py 8447368                 # by NOAA station id
-    python3 setup_location.py --near 37.81,-122.47    # nearest station
-    python3 setup_location.py 9414290 --units m --name "San Francisco"
+    python3 setup_location.py --near 33.34,-118.33    # nearest station
+    python3 setup_location.py 9410079 --name "Avalon" --subtitle "Santa Catalina Island"
 
 NOAA covers the US and its territories (~3,400 stations). For locations outside
 that, see the "international" note in the README (the TICON-4 global dataset),

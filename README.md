@@ -104,8 +104,8 @@ harmonic constituents, coordinates, timezone, and datums — in one command:
 
 ```bash
 python3 src/python/setup_location.py 8447368            # by NOAA station id
-python3 src/python/setup_location.py --near 37.81,-122.47   # nearest station
-python3 src/python/setup_location.py 9414290 --units m --name "San Francisco"
+python3 src/python/setup_location.py --near 33.34,-118.33   # nearest station
+python3 src/python/setup_location.py 9410079 --name "Avalon" --subtitle "Santa Catalina Island"
 ```
 
 Find your station id at <https://tidesandcurrents.noaa.gov> (search your area,
