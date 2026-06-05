@@ -2,21 +2,55 @@
 """
 Tidemark configuration.
 
-Everything location-specific lives here so the display is modular: point it at
-a different NOAA harmonic station (and its coordinates) and the tide curve,
-daylight band, and moon all follow. No internet is required at runtime.
+The location-specific bits live in ``location.json`` (next to this file), so you
+never have to edit code to point the display somewhere new — run
+``setup_location.py`` and it writes that file for you. If it's missing, we fall
+back to the bundled default station so a fresh clone still runs. No internet is
+required at runtime.
 """
 
-from data.stations import GREAT_HILL
+import os
+import json
+
+from data.stations import load_station, DEFAULT_STATION_ID
 
 # ---- Active location -------------------------------------------------------
-LOCATION = {
+# Defaults (used when location.json is absent). setup_location.py overwrites
+# location.json with the chosen station's name/coordinates/timezone.
+_DEFAULT_LOCATION = {
     "name": "Great Hill",
     "subtitle": "Buzzards Bay, MA",
     "latitude": 41.7138,      # NOAA station 8447368
     "longitude": -70.7506,
     "timezone": "America/New_York",
-    "station": GREAT_HILL,    # harmonic constituents
+    "station_id": DEFAULT_STATION_ID,
+    "units": "ft",            # display units: "ft" or "m"
+}
+
+_LOCATION_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "location.json")
+
+
+def _load_location():
+    """Merge location.json (if present) over the bundled defaults."""
+    loc = dict(_DEFAULT_LOCATION)
+    try:
+        with open(_LOCATION_FILE) as fh:
+            loc.update(json.load(fh))
+    except FileNotFoundError:
+        pass
+    return loc
+
+
+_loc = _load_location()
+
+LOCATION = {
+    "name": _loc["name"],
+    "subtitle": _loc.get("subtitle", ""),
+    "latitude": _loc["latitude"],
+    "longitude": _loc["longitude"],
+    "timezone": _loc["timezone"],
+    "station": load_station(_loc["station_id"]),   # harmonic constituents
 }
 
 # ---- Display window --------------------------------------------------------
@@ -26,8 +60,8 @@ WINDOW_HOURS = 36
 WINDOW_LOOKBACK_HOURS = 3
 
 # Units: heights are metric (m) from the harmonic data. Set to "ft" to display
-# in feet (1 m = 3.28084 ft).
-HEIGHT_UNITS = "ft"
+# in feet (1 m = 3.28084 ft). Driven by location.json when present.
+HEIGHT_UNITS = _loc.get("units", "ft")
 
 # ---- Weather (optional, needs internet; offline-safe) ----------------------
 # Adds an air-temperature line and a cloud-cover strip from the US National
