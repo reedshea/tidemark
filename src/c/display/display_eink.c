@@ -134,11 +134,39 @@ static uint8_t* eink_get_framebuffer(void) {
     return framebuffer;
 }
 
+// Push a BMP to the IT8951 panel. A partial refresh repaints only the
+// now-marker strip (fast, but ghosting can accumulate); a full refresh
+// deep-clears (black<->white INIT cycles to clear burn-in) before a crisp GC16
+// repaint. Deploy/daily cleans get more cycles than the hourly clean.
+static bool eink_present(const char* path, RefreshMode mode,
+                         int rx, int ry, int rw, int rh) {
+#ifndef PLATFORM_MACOS
+    if (mode == REFRESH_PARTIAL) {
+        printf("Partial GC16 refresh of now-marker strip [%d %d %d %d]...\n",
+               rx, ry, rw, rh);
+        IT8951_Display_BMP_Area((char*)path, (uint16_t)rx, (uint16_t)ry,
+                                (uint16_t)rw, (uint16_t)rh);
+    } else {
+        int cycles = (mode == REFRESH_FULL_DEEP) ? 4 : 1;
+        printf("Deep clear (%d cycle%s) + GC16 refresh...\n",
+               cycles, cycles == 1 ? "" : "s");
+        IT8951_Deep_Clear(cycles);
+        IT8951_BMP_Example(0, 0, (char*)path);
+    }
+    printf("Successfully displayed bitmap on e-ink display\n");
+    return true;
+#else
+    (void)path; (void)mode; (void)rx; (void)ry; (void)rw; (void)rh;
+    return false;
+#endif
+}
+
 // Create and return the E-Ink display interface
 DisplayInterface eink_interface = {
     .init = eink_init,
     .cleanup = eink_cleanup,
     .update = eink_update,
     .draw_text = eink_draw_text,
-    .get_framebuffer = eink_get_framebuffer
+    .get_framebuffer = eink_get_framebuffer,
+    .present = eink_present
 };

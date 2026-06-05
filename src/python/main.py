@@ -84,9 +84,6 @@ def main():
     parser.add_argument("--output", default="/tmp/tide_chart.bmp")
     parser.add_argument("--now", default=None,
                         help="ISO datetime override for testing")
-    # accepted for compatibility with the C host; no longer used
-    parser.add_argument("--day", action="store_true")
-    parser.add_argument("--night", action="store_true")
     args = parser.parse_args()
 
     now = None
