@@ -135,9 +135,14 @@ static uint8_t* eink_get_framebuffer(void) {
 }
 
 // Push a BMP to the IT8951 panel. A partial refresh repaints only the
-// now-marker strip (fast, but ghosting can accumulate); a full refresh
-// deep-clears (black<->white INIT cycles to clear burn-in) before a crisp GC16
-// repaint. Deploy/daily cleans get more cycles than the hourly clean.
+// now-marker strip (fast, but ghosting can accumulate). A full refresh clears
+// the panel before a crisp GC16 repaint; the clear comes in two strengths:
+//   - REFRESH_FULL (hourly): a single white INIT pass. The furniture shifts
+//     one hour-column each hour, and GC16 alone only softens the old position's
+//     ghost, so we need a real INIT clear — but one white flash is enough to
+//     wipe normal hourly ghosting, with no jarring full-black flash.
+//   - REFRESH_FULL_DEEP (daily 3am + deploys): black<->white INIT cycles to
+//     scrub deeper/burnt-in ghosting that a single white pass won't reset.
 static bool eink_present(const char* path, RefreshMode mode,
                          int rx, int ry, int rw, int rh) {
 #ifndef PLATFORM_MACOS
@@ -146,11 +151,13 @@ static bool eink_present(const char* path, RefreshMode mode,
                rx, ry, rw, rh);
         IT8951_Display_BMP_Area((char*)path, (uint16_t)rx, (uint16_t)ry,
                                 (uint16_t)rw, (uint16_t)rh);
+    } else if (mode == REFRESH_FULL_DEEP) {
+        printf("Deep clear (4 cycles) + GC16 refresh...\n");
+        IT8951_Deep_Clear(4);
+        IT8951_BMP_Example(0, 0, (char*)path);
     } else {
-        int cycles = (mode == REFRESH_FULL_DEEP) ? 4 : 1;
-        printf("Deep clear (%d cycle%s) + GC16 refresh...\n",
-               cycles, cycles == 1 ? "" : "s");
-        IT8951_Deep_Clear(cycles);
+        printf("White INIT clear + GC16 refresh...\n");
+        IT8951_Clear_Refresh();
         IT8951_BMP_Example(0, 0, (char*)path);
     }
     printf("Successfully displayed bitmap on e-ink display\n");
