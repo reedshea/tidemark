@@ -35,13 +35,13 @@ PLOT_RIGHT = WIDTH - MARGIN - PAD
 # Top "chart furniture", three rows top-to-bottom: day+date, sun times,
 # then the x-axis line (also the night-box ceiling) with its hour ticks.
 TITLE_Y = MARGIN + 72             # baseline of the day + date title line
-SUN_LABEL_Y = TITLE_Y + 92        # sunrise / noon / sunset times row
-AXIS_TICK_Y = SUN_LABEL_Y + 42    # x-axis line + ticks; also the night-box top
+SUN_LABEL_Y = TITLE_Y + 80        # sunrise / noon / sunset times row
+AXIS_TICK_Y = SUN_LABEL_Y + 24    # x-axis line + ticks; also the night-box top
 AXIS_TICK_LONG = 18               # tick length for 6h / midnight marks
 AXIS_TICK_SHORT = 10              # tick length for 3h marks
 
 SKY_TOP = AXIS_TICK_Y             # night bands hang from the axis line down
-MOON_SKY_TOP = AXIS_TICK_Y + 58   # moon rides just below the axis
+MOON_SKY_TOP = AXIS_TICK_Y + 100   # moon rides just below the axis
 HORIZON_Y = HEIGHT - MARGIN - PAD  # the sea's baseline; engraved fill sits above
 PLOT_TOP = 380            # highest the tide curve can reach
 PLOT_BOTTOM = HORIZON_Y   # curve's low-water floor == horizon
