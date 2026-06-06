@@ -520,7 +520,6 @@ def _draw_curve(c, curve, X, now):
 
 def _draw_extrema(c, series, X, Y, now):
     """Highs get a time label above the crest; lows are bare open dots."""
-    next_high = series.next_high(now)
     for e in series.extrema:
         x, y = X(e.time), Y(e.height)
         if x < T.PLOT_LEFT + 4 or x > T.PLOT_RIGHT - 4:
@@ -528,10 +527,9 @@ def _draw_extrema(c, series, X, Y, now):
         future = e.time >= now
         ink = T.INK if future else T.GRID
         if e.kind == "H":
-            is_next = (e is next_high)
             c.dot(x, y, 6, fill=ink)
             _draw_time(c, x, y - 22, e.time, T.FONT_TIME, T.INK,
-                       "sans_bold" if is_next else "sans", align="m")
+                       "sans", align="m")
         else:
             c.dot(x, y, 5, fill=T.PAPER, outline=ink, width=2)
 
