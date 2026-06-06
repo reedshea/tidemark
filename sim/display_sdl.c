@@ -63,6 +63,13 @@ static bool sdl_init(DisplayConfig* config) {
         return false;
     }
 
+    // The window is shown at half the panel resolution (see scale above), so the
+    // full-res texture is downscaled. Default SDL scaling is nearest-neighbor,
+    // which drops every other pixel and turns anti-aliased text/lines coarse and
+    // jagged. Linear filtering downsamples smoothly so the preview matches the
+    // quality the e-ink panel gets from the same full-res bitmap.
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
+
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     if (!renderer) {
         printf("Renderer could not be created! SDL_Error: %s\n", SDL_GetError());
