@@ -5,6 +5,12 @@
 #include <unistd.h>
 #include <string.h>
 
+#ifndef PLATFORM_MACOS
+#include <sys/file.h>
+#include <fcntl.h>
+#include <errno.h>
+#endif
+
 #ifdef PLATFORM_MACOS
 #include "SDL.h"
 #endif
@@ -37,6 +43,29 @@ int main(int argc, char* argv[]) {
     // Initialize display layer
 #ifdef PLATFORM_MACOS
     use_simulator = true;
+#endif
+
+#ifndef PLATFORM_MACOS
+    // SPI bus guard: only one tidemark may drive the IT8951 at a time. Two
+    // concurrent processes (e.g. a manual run racing the systemd timer, or a
+    // deploy baseline overlapping a timer fire) collide mid-transfer and leave a
+    // corrupted, half-written frame. Take an exclusive, non-blocking lock held
+    // for our whole lifetime (released automatically on exit). If another
+    // instance already holds it, skip this run rather than collide — the next
+    // timer fire will refresh the panel.
+    int lock_fd = open("/run/tidemark.lock", O_RDWR | O_CREAT, 0644);
+    if (lock_fd < 0) lock_fd = open("/tmp/tidemark.lock", O_RDWR | O_CREAT, 0644);
+    if (lock_fd >= 0) {
+        if (flock(lock_fd, LOCK_EX | LOCK_NB) != 0) {
+            printf("Another tidemark holds the display lock; skipping this run "
+                   "to avoid an SPI collision.\n");
+            close(lock_fd);
+            return 0;
+        }
+    } else {
+        printf("Warning: could not open display lock (%s); proceeding without "
+               "the SPI guard.\n", strerror(errno));
+    }
 #endif
 
     printf("Starting display initialization (simulator=%d)...\n", use_simulator);
