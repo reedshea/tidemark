@@ -1,83 +1,33 @@
 # Tidemark
 
-A clean, offline tide display for e-ink. Tidemark answers one question at a
-glance — *when is high tide, and is it during daylight?* — so you can plan the
-swim off the dock without checking a tide app.
+A clean, offline tide display for e-ink. One black tide line, a day/night band,
+directly-labeled highs and lows, and a true-phase moon — the next high tide and
+whether it falls in daylight, read at a glance.
 
-It runs on a Raspberry Pi driving a Waveshare 7.8" IT8951 e-ink panel, needs no
-internet, and is styled in the spirit of Edward Tufte: one black tide line, a
-slim day/night band, directly-labeled highs and lows, and a true-phase moon.
+It runs on a Raspberry Pi driving a Waveshare 7.8" IT8951 e-ink panel and needs
+no internet to render.
 
 ![A Tidemark render](docs/sample.png)
 
 ## How it works
 
 A small C host runs the display loop and pushes a bitmap to the panel (or to an
-SDL simulator on macOS). A Python program generates that bitmap:
+SDL simulator on macOS). A Python program generates that bitmap.
+
+Tide height is predicted from NOAA harmonic constituents, computing the
+equilibrium argument (V₀+u) and nodal factor (f) that real harmonic prediction
+needs — so it stays accurate with no network (validated against NOAA station
+8447368: ~3 min mean error on high-tide timing, ~0.17 m full-curve RMS). Sun and
+moon are likewise computed from first principles, correct for any date and
+location.
 
 ```
-src/python/
-  setup_location.py    One-command location setup (fetches a NOAA station)
-  config.py            Static knobs (window, units, weather); reads location.json
-  location.json        Active location (written by setup_location.py; optional)
-  data/
-    harmonics.py       Harmonic tide engine with full astronomical corrections
-    stations.py        Loads station records from data/stations/*.json
-    stations/          One JSON file per tide station (pure data)
-    tide.py            Tide curve + high/low extrema over a time window
-    sun.py             Sunrise/sunset/twilight (NOAA solar algorithm)
-    moon.py            Moon phase + rise/set + altitude arc
-    weather.py         Optional NWS forecast (temp/cloud/precip), offline-safe
-  render/
-    theme.py           Palette, fonts, geometry (e-ink friendly)
-    ribbon.py          The Tufte-style tide ribbon
-  main.py              Assembles data + renders the BMP
-src/c/                 Display host (main loop, refresh strategy, driver layer)
-sim/                   SDL2 simulator for desktop iteration
-lib/IT8951/            Waveshare driver (vendored)
-tests/                 unittest suite (tide math, astronomy, render smoke test)
+src/python/   Tide/sun/moon math + Pillow rendering → 8-bit BMP
+src/c/        Display host (main loop, refresh strategy, driver layer)
+sim/          SDL2 simulator for desktop iteration
+lib/IT8951/   Waveshare driver (vendored)
+tests/        unittest suite
 ```
-
-### Accurate tides, fully offline
-
-Tide height is predicted from NOAA harmonic constituents. The naïve model
-`height = MSL + Σ A·cos(speed·t + phase)` is wrong by *hours* because it omits
-the equilibrium argument (V₀+u) and nodal factor (f) that real harmonic
-prediction needs. `harmonics.py` computes those from the astronomical mean
-longitudes, so predictions are accurate with no network connection.
-
-Validated against NOAA station 8447368 (Great Hill):
-
-| metric | result |
-|---|---|
-| high-tide timing | ~3 min mean error (max 11 min) |
-| low-tide timing | flat troughs; heights within ~0.1 m |
-| full-curve RMS | ~0.17 m over a ~1.2 m range |
-| timing bias | ~0 |
-
-Sun and moon are likewise computed (no hardcoded tables): day length, moon
-phase, and moonrise/moonset are correct for any date and location.
-
-## Design
-
-Built for e-ink, where large mid-gray fills and fine texture cause ghosting and
-banding. So: white ground, a single black data line, a tiny restrained set of
-grays, direct labels, no boxes or heavy gridlines. The chart is rendered at 2×
-and downsampled for smooth anti-aliased lines. Daylight high tides sit on white;
-night ones sit on a faint gray wash — the swim answer, read at a glance.
-
-The canvas is split into a **sky panel** and a **sea panel** by a horizon line.
-The moon traces its real altitude arc across the sky — rising, transiting, and
-setting at the correct times and the correct height (a near-solstice full moon
-rides low; a winter moon climbs high) — with the phase glyph at its high point.
-
-### Optional weather (the only online piece)
-
-When enabled (`config.WEATHER_ENABLED`), the sky panel also shows an air-
-temperature line and a cloud-cover strip (with precip hatching) from the US
-National Weather Service. It is strictly additive and offline-safe: the
-forecast is cached to disk, refreshed only when stale, and simply omitted when
-there is no cache and no network. Tide, sun, and moon never touch the internet.
 
 ## Build & run
 
@@ -93,9 +43,8 @@ python3 src/python/main.py --output /tmp/tide.bmp
 python3 src/python/main.py --now 2026-05-30T14:23 --output /tmp/tide.bmp   # test a time
 ```
 
-The only Python dependency is **Pillow**. (`make venv` sets up a virtualenv.)
-
-Run the tests with `python3 -m unittest discover -s tests`.
+The only Python dependency is **Pillow**. Run the tests with
+`python3 -m unittest discover -s tests`.
 
 ## Configuring a location
 
@@ -108,12 +57,11 @@ python3 src/python/setup_location.py --near 33.34,-118.33   # nearest station
 python3 src/python/setup_location.py 9410079 --name "Avalon" --subtitle "Santa Catalina Island"
 ```
 
-Find your station id at <https://tidesandcurrents.noaa.gov> (search your area,
-then read the 7-digit id from the station page). Setup writes two files:
+Find your station id at <https://tidesandcurrents.noaa.gov>. Setup writes
 `data/stations/<id>.json` (the harmonic record) and `location.json` (the active
-selection that `config.py` reads). Network is needed only here, at setup;
-rendering stays fully offline. Window length, units, and the optional weather
-panel are static knobs in `config.py`.
+selection). Network is needed only here, at setup; rendering stays fully offline.
+Window length, units, and the optional weather panel are static knobs in
+`config.py`.
 
 **Outside the US?** NOAA covers the US and its territories. For other coasts,
 hand-write a `data/stations/<id>.json` by the same schema using published
