@@ -81,11 +81,11 @@ _FONT_FILES = {
 _cache = {}
 
 # Smallest type we ever render (a safety floor below the intentional sizes).
-FONT_MIN = 28
+FONT_MIN = 35
 
 # Type scale (logical pt). Dates are the largest; times match the old date size.
-FONT_DATE = 57            # weekday + date titles
-FONT_TIME = 44            # sun times (header) and tide-peak times
+FONT_DATE = 71            # weekday + date titles
+FONT_TIME = 55            # sun times (header) and tide-peak times
 SMALLCAP = 0.72           # am/pm small-cap height relative to the time
 
 
