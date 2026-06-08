@@ -7,7 +7,7 @@ whether it falls in daylight, read at a glance.
 It runs on a Raspberry Pi driving a Waveshare 7.8" IT8951 e-ink panel and needs
 no internet to render.
 
-![A Tidemark render](docs/sample.png)
+![Tidemark with the optional weather row](docs/sample-weather.png)
 
 ## How it works
 
@@ -71,8 +71,6 @@ Apache-2.0) sits between the time axis and the chart, drawn from the US National
 Weather Service forecast. Glyphs anchor on noon/midnight and "now", and fill an
 in-between cell only when the weather actually changes — sun, cloud, overcast,
 rain, snow, wind, thunder, and a constellation for clear nights.
-
-![Tidemark with the optional weather row](docs/sample-weather.png)
 
 **Outside the US?** NOAA covers the US and its territories. For other coasts,
 hand-write a `data/stations/<id>.json` by the same schema using published
