@@ -51,6 +51,8 @@ class FakeForecast:
 
     def precip_kind(self, dt):
         h = self._h(dt)
+        if 16 <= h <= 18:
+            return "thunder"          # a thunder burst inside the rain
         if 13 <= h <= 19:
             return "rain"
         if 30 <= h <= 35:
@@ -60,6 +62,10 @@ class FakeForecast:
     def temp_f(self, dt):
         h = self._h(dt)
         return 52 + 14 * math.sin((h - 15) / 24 * 2 * math.pi)
+
+    def gust_mph(self, dt):
+        h = self._h(dt)
+        return 32 if 22 <= h <= 26 else 8   # a windy stretch (-> windy glyph)
 
 
 def main():

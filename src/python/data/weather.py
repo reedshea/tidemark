@@ -61,6 +61,9 @@ class Forecast:
         self.sky = _parse_series(raw["skyCover"])
         self.pop = _parse_series(raw["probabilityOfPrecipitation"])
         self.wx = _parse_series(raw["weather"])
+        # wind is optional / may be missing from an older cache file
+        self.wind = _parse_series(raw.get("windSpeed", []))
+        self.gust = _parse_series(raw.get("windGust", []))
 
     @staticmethod
     def _lookup(series, dt):
@@ -84,12 +87,21 @@ class Forecast:
         if not v:
             return None
         kinds = " ".join((w.get("weather") or "") for w in v)
+        if "thunder" in kinds:
+            return "thunder"
         if "snow" in kinds or "sleet" in kinds or "ice" in kinds:
             return "snow"
-        if ("rain" in kinds or "shower" in kinds or "thunder" in kinds
-                or "drizzle" in kinds):
+        if "rain" in kinds or "shower" in kinds or "drizzle" in kinds:
             return "rain"
         return None
+
+    def gust_mph(self, dt):
+        """Wind gust in mph (falls back to sustained wind), or None. NWS
+        gridpoint wind is km/h."""
+        v = self._lookup(self.gust, dt)
+        if v is None:
+            v = self._lookup(self.wind, dt)
+        return None if v is None else v * 0.621371
 
 
 def _fetch(lat, lon, contact):
@@ -110,6 +122,8 @@ def _fetch(lat, lon, contact):
         "probabilityOfPrecipitation":
             grid["probabilityOfPrecipitation"]["values"],
         "weather": grid["weather"]["values"],
+        "windSpeed": grid.get("windSpeed", {}).get("values", []),
+        "windGust": grid.get("windGust", {}).get("values", []),
     }
 
 

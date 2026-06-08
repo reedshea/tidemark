@@ -679,14 +679,23 @@ def _place_glyph(c, name, cx, cy, size):
     c.d = ImageDraw.Draw(c.img)
 
 
+_WINDY_MPH = 25            # gust threshold (mph) for the windy glyph
+
+
 def _condition(wx, t, day):
-    """Pick a Carbon glyph for the forecast at `t`. Clear night -> None (the
-    moon stands in for a clear night)."""
+    """Pick a Carbon glyph for the forecast at `t`. Precip and thunder win over
+    wind, which wins over cloud cover; clear day is sunny, clear night the
+    constellation."""
     kind = wx.precip_kind(t)
-    if kind == "rain":
-        return "rain_heavy" if (wx.precip_prob(t) or 0) >= 70 else "rain"
+    if kind == "thunder":
+        return "lightning"
     if kind == "snow":
         return "snow"
+    if kind == "rain":
+        return "rain_heavy" if (wx.precip_prob(t) or 0) >= 70 else "rain"
+    gust = wx.gust_mph(t)
+    if gust is not None and gust >= _WINDY_MPH:
+        return "windy"
     cov = wx.cloud(t) or 0
     if cov >= 90:
         return "overcast"
@@ -716,13 +725,13 @@ def _draw_weather(c, ctx, X):
     moon below stands in for it)."""
     wx = ctx["weather"]
     size = T.WX_GLYPH_SIZE
-    # Base cadence on the 6-hour marks (midnight / 6am / noon / 6pm); fill an
-    # in-between 3h cell only when the condition changes from the last one
-    # shown, so stable weather stays sparse but transitions still register.
+    # Anchor on noon and midnight only; fill another 3h cell (6am/6pm first,
+    # then any cell) only when the condition changes from the last one shown,
+    # so stable weather stays very sparse but transitions still register.
     last = object()                                  # "unset" sentinel
     for t in _tick_times(ctx):
         name = _condition(wx, t, _is_day(ctx, t))
-        primary = (t.hour % 6 == 0)
+        primary = t.hour in (0, 12)
         if not (primary or name != last):
             continue
         last = name
