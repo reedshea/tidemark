@@ -18,11 +18,50 @@ static SDL_Color get_sdl_color(uint8_t gray) {
     return (SDL_Color){gray, gray, gray, 255};
 }
 
+// Panel-emulation knobs, read once from the environment. The real IT8951 in
+// GC16 mode shows only 16 gray levels, and it's a reflective surface: "black"
+// is a dark charcoal and "paper" an off-white, so the contrast is far lower
+// than a backlit monitor. With TIDEMARK_SIM_PANEL=1 the preview snaps each
+// pixel to 16 levels and remaps the range into a paper..ink band, so the
+// simulator looks closer to the actual display instead of crisp 8-bit on glass.
+//   TIDEMARK_SIM_PANEL=1   enable panel emulation (default off: raw 8-bit)
+//   TIDEMARK_SIM_INK=N     darkest displayable value (default 30)
+//   TIDEMARK_SIM_PAPER=N   brightest displayable value (default 225)
+static int panel_emulate = -1;   // -1 = uninitialized
+static int panel_ink = 30;
+static int panel_paper = 225;
+
+static int env_int(const char* name, int fallback) {
+    const char* v = getenv(name);
+    return v && *v ? atoi(v) : fallback;
+}
+
+static void panel_init_once(void) {
+    if (panel_emulate >= 0) return;
+    const char* v = getenv("TIDEMARK_SIM_PANEL");
+    panel_emulate = (v && *v && strcmp(v, "0") != 0) ? 1 : 0;
+    panel_ink = env_int("TIDEMARK_SIM_INK", 30);
+    panel_paper = env_int("TIDEMARK_SIM_PAPER", 225);
+    if (panel_emulate)
+        printf("Panel emulation on: 16 levels, ink=%d paper=%d\n",
+               panel_ink, panel_paper);
+}
+
+// Map a full-range 8-bit value to what the panel would actually show: snap to
+// one of 16 evenly-spaced levels, then compress that into the ink..paper band.
+static uint8_t panel_map(uint8_t gray) {
+    int level = (gray * 15 + 127) / 255;            // nearest of 16 levels
+    int q = level * 255 / 15;                        // back to 0..255
+    return (uint8_t)(panel_ink + q * (panel_paper - panel_ink) / 255);
+}
+
 // Convert grayscale framebuffer to RGBA texture buffer
 static void update_texture_buffer(void) {
+    panel_init_once();
     for (int i = 0; i < DISPLAY_WIDTH * DISPLAY_HEIGHT; i++) {
         uint8_t gray = framebuffer[i];
-        
+        if (panel_emulate) gray = panel_map(gray);
+
         // Using direct bit shifting approach for grayscale
         // This creates RGBA with identical R, G, B values (true grayscale)
         texture_buffer[i] = (gray << 24) | (gray << 16) | (gray << 8) | 0xFF;

@@ -14,14 +14,22 @@ from PIL import ImageFont
 WIDTH = 1872
 HEIGHT = 1404
 
-# Grayscale palette (0 = black, 255 = white). Kept deliberately sparse.
-INK = 0           # primary data line + dark text
-PAPER = 255       # background
-INK_SOFT = 95     # secondary text / moon dark side
-GRID = 205        # hairlines, ticks
-SEA_LINE = 120    # engraved hairlines filling the sea below the curve (uniform)
-NIGHT_SKY = 238   # hard-edged night band behind the chart (sky)
-BORDER = 150      # the thin framing rectangle
+# Grayscale palette (0 = black, 255 = white). Kept deliberately sparse, and
+# each value snapped to one of the panel's 16 GC16 levels (multiples of 17) so
+# solid elements land exactly on a displayable level rather than getting rounded
+# unpredictably — sometimes per-pixel — by the panel's quantizer.
+def _gc16(v):
+    """Nearest of the 16 GC16 levels (0, 17, 34, ... 255)."""
+    return round(v / 255 * 15) * 255 // 15
+
+
+INK = _gc16(0)          # primary data line + dark text
+PAPER = _gc16(255)      # background
+INK_SOFT = _gc16(95)    # secondary text / moon dark side
+GRID = _gc16(205)       # hairlines, ticks
+SEA_LINE = _gc16(120)   # engraved hairlines filling the sea below the curve
+NIGHT_SKY = _gc16(238)  # hard-edged night band behind the chart (sky)
+BORDER = _gc16(150)     # the thin framing rectangle
 
 # Framed composition: a hairline border inset from the panel edge, a sky region
 # up top (day labels + moon, with hard-edged night bands), a horizon line, and
