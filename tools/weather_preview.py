@@ -23,17 +23,24 @@ from render import ribbon         # noqa: E402
 
 
 class FakeForecast:
-    """Hour-indexed synthetic forecast over the render window."""
+    """Hour-indexed synthetic forecast over the render window.
 
-    def __init__(self, start):
+    profile="varied" exercises every glyph (busy); profile="calm" is a mostly
+    clear stretch with a single afternoon shower — a realistic, sparse example.
+    """
+
+    def __init__(self, start, profile="varied"):
         self.start = start
+        self.profile = profile
 
     def _h(self, dt):
         return (dt - self.start).total_seconds() / 3600.0
 
     def cloud(self, dt):
-        # smooth arc 0->100 and back, with a clear gap, then a snowy bank
         h = self._h(dt)
+        if self.profile == "calm":
+            # clear, with clouds building only around one afternoon shower
+            return 80 if 25 <= h <= 31 else 12
         v = 50 + 50 * math.sin((h - 9) / 24 * 2 * math.pi)
         if 4 <= h <= 7:
             v = 10                     # a clear afternoon window
@@ -43,6 +50,8 @@ class FakeForecast:
 
     def precip_prob(self, dt):
         h = self._h(dt)
+        if self.profile == "calm":
+            return 60 if 27 <= h <= 30 else 5
         if 13 <= h <= 19:
             return 80                  # midday rain
         if 30 <= h <= 35:
@@ -51,6 +60,8 @@ class FakeForecast:
 
     def precip_kind(self, dt):
         h = self._h(dt)
+        if self.profile == "calm":
+            return "rain" if 27 <= h <= 30 else None
         if 16 <= h <= 18:
             return "thunder"          # a thunder burst inside the rain
         if 13 <= h <= 19:
@@ -65,18 +76,21 @@ class FakeForecast:
 
     def gust_mph(self, dt):
         h = self._h(dt)
+        if self.profile == "calm":
+            return 8
         return 32 if 22 <= h <= 26 else 8   # a windy stretch (-> windy glyph)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--now", default="2026-06-08T15:00:00")
+    ap.add_argument("--profile", default="varied", choices=["varied", "calm"])
     ap.add_argument("--out", default="/tmp/wx.bmp")
     args = ap.parse_args()
 
     now = datetime.datetime.fromisoformat(args.now)
     ctx = tide_main.build_context(now)
-    ctx["weather"] = FakeForecast(ctx["start"])
+    ctx["weather"] = FakeForecast(ctx["start"], profile=args.profile)
 
     img, _ = ribbon.render(ctx)
     img.save(args.out, "BMP")
