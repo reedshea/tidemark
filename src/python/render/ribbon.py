@@ -10,19 +10,46 @@ Composition (chosen to read as deliberate wall art and to survive e-ink):
   - the sea is "engraved" with horizontal hairlines below the curve — depth and
     texture with pure black-on-white lines (no mid-gray fills that band/ghost).
 
-Rendered at 2x and downsampled so the curve and hairlines are smooth.
+Rendered at 4x and downsampled so the curve and hairlines are smooth (see the
+TIDE_SS / TIDE_FILTER env knobs below for tuning the antialiasing).
 """
 
 import math
 import datetime
+import os
 import random
 
 from PIL import Image, ImageDraw
 
 from render import theme as T
+from render import eink
 from data.sun import sun_altitude
 
-SS = 2  # supersampling factor
+# Antialiasing / e-ink experiment knobs (env-overridable so the simulator can
+# sweep combinations without code edits):
+#   TIDE_SS=N            supersample factor for the main canvas (default 4)
+#   TIDE_FILTER=name     downsample filter: lanczos|bicubic|bilinear|box|hamming
+#   TIDE_LINEAR=0        disable linear-light downsampling (default on; AA edge
+#                        ramps are only correct when averaged in linear light)
+#   TIDE_POSTERIZE16=1   quantize to the 16 GC16 levels (preview the panel's
+#                        depth/banding from the simulator)
+#   TIDE_SNAP=0          disable pixel-grid snapping of axis-aligned lines
+#   TIDE_TEXT_GAMMA=g    stem-darken text by gamma g on glyph coverage (e.g.
+#                        1.4); default 1.0 (off).
+def _envflag(name, default=False):
+    v = os.environ.get(name)
+    if v is None:
+        return default
+    return v not in ("", "0", "false", "False")
+
+
+SS = int(os.environ.get("TIDE_SS", "4"))  # supersampling factor
+_FILTER_NAME = os.environ.get("TIDE_FILTER", "lanczos")
+_RESAMPLE = eink.resolve_filter(_FILTER_NAME)
+_LINEAR = _envflag("TIDE_LINEAR", True)
+_POSTERIZE16 = _envflag("TIDE_POSTERIZE16", False)
+_SNAP = _envflag("TIDE_SNAP", True)
+_TEXT_GAMMA = float(os.environ.get("TIDE_TEXT_GAMMA", "1.0"))
 M2FT = 3.28084
 
 # The engraved sea's hairlines undulate as a sum of sine swells rather than
@@ -42,6 +69,13 @@ def _s(v):
     return int(round(v * SS))
 
 
+def _snap_center(v):
+    """Snap a device coordinate to the center of an output pixel (k*SS + SS/2),
+    so an axis-aligned stroke of width SS covers exactly one output pixel."""
+    half = SS // 2
+    return int(round((v - half) / SS)) * SS + half
+
+
 class _Canvas:
     """Thin wrapper that scales all drawing by the supersample factor."""
 
@@ -50,12 +84,29 @@ class _Canvas:
         self.d = ImageDraw.Draw(self.img)
 
     def line(self, pts, fill, width=1):
-        self.d.line([(_s(x), _s(y)) for x, y in pts], fill=fill,
-                    width=max(1, _s(width)), joint="curve")
+        dev = [(_s(x), _s(y)) for x, y in pts]
+        # Pixel-grid fitting: a purely horizontal/vertical stroke whose center
+        # falls between output pixels gets antialiased into a fuzzy two-row gray
+        # smear that then quantizes harshly. Snap the constant axis so the
+        # stroke lands centered on a single output pixel. Curves/diagonals are
+        # left untouched so they keep their (wanted) antialiasing.
+        if _SNAP and len(dev) >= 2:
+            xs = {p[0] for p in dev}
+            ys = {p[1] for p in dev}
+            if len(xs) == 1:                       # vertical
+                sx = _snap_center(dev[0][0])
+                dev = [(sx, y) for _, y in dev]
+            elif len(ys) == 1:                     # horizontal
+                sy = _snap_center(dev[0][1])
+                dev = [(x, sy) for x, _ in dev]
+        self.d.line(dev, fill=fill, width=max(1, _s(width)), joint="curve")
 
     def rect(self, box, fill=None, outline=None, width=1):
-        self.d.rectangle([_s(box[0]), _s(box[1]), _s(box[2]), _s(box[3])],
-                         fill=fill, outline=outline, width=max(1, _s(width)))
+        dev = [_s(box[0]), _s(box[1]), _s(box[2]), _s(box[3])]
+        if _SNAP:
+            dev = [int(round(v / SS)) * SS for v in dev]
+        self.d.rectangle(dev, fill=fill, outline=outline,
+                         width=max(1, _s(width)))
 
     def polygon(self, pts, fill=None, outline=None):
         self.d.polygon([(_s(x), _s(y)) for x, y in pts], fill=fill,
@@ -71,8 +122,25 @@ class _Canvas:
 
     def text(self, xy, s, fill, style, size, anchor="la"):
         size = max(size, T.FONT_MIN)  # enforce the legibility floor (logical pt)
-        self.d.text((_s(xy[0]), _s(xy[1])), s, fill=fill,
-                    font=T.font(style, _s(size)), anchor=anchor)
+        fnt = T.font(style, _s(size))
+        pos = (_s(xy[0]), _s(xy[1]))
+        if _TEXT_GAMMA == 1.0:
+            self.d.text(pos, s, fill=fill, font=fnt, anchor=anchor)
+            return
+        # Stem darkening: render glyph coverage on a scratch layer, raise it by
+        # a gamma so partial-coverage (stem-edge) pixels read darker — thin
+        # serifs survive the 16-level quantization instead of washing out — then
+        # composite with that coverage as the mask.
+        box = self.d.textbbox(pos, s, font=fnt, anchor=anchor)
+        pad = 2
+        x0, y0 = box[0] - pad, box[1] - pad
+        w, h = max(1, box[2] - x0 + pad), max(1, box[3] - y0 + pad)
+        cover = Image.new("L", (w, h), 0)
+        ImageDraw.Draw(cover).text((pos[0] - x0, pos[1] - y0), s, fill=255,
+                                   font=fnt, anchor=anchor)
+        cover = cover.point(
+            [round((i / 255.0) ** (1.0 / _TEXT_GAMMA) * 255) for i in range(256)])
+        self.img.paste(Image.new("L", (w, h), fill), (x0, y0), cover)
 
     def text_width(self, s, style, size):
         """Logical-pixel width of `s` at the given style/size (after FONT_MIN)."""
@@ -81,7 +149,14 @@ class _Canvas:
         return (box[2] - box[0]) / SS
 
     def finish(self):
-        return self.img.resize((T.WIDTH, T.HEIGHT), Image.LANCZOS)
+        size = (T.WIDTH, T.HEIGHT)
+        if _LINEAR:
+            out = eink.downsample_linear(self.img, size, _RESAMPLE)
+        else:
+            out = self.img.resize(size, _RESAMPLE)
+        if _POSTERIZE16:
+            out = eink.quantize_gc16(out)
+        return out
 
 
 def _time_parts(dt):
