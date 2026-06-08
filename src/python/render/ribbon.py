@@ -232,7 +232,7 @@ def render(ctx):
     _draw_extrema(c, series, X, Y, now)
     _draw_now(c, series, X, Y, now)
     if ctx.get("weather") is not None:
-        _draw_temperature(c, ctx, X)
+        _draw_weather(c, ctx, X)
     _draw_frame(c)
 
     return c.finish(), _now_marker_rect(X, now)
@@ -415,13 +415,17 @@ def _draw_title_and_axis(c, ctx, X):
                 c.text((lx + w_n, T.SUN_LABEL_Y), "OON", T.INK, "sans",
                        sc, anchor="ls")
             else:
+                # sunrise / sunset: a short tick UP from the upper axis toward
+                # the time label.
+                c.line([(x, T.AXIS_TICK_Y),
+                        (x, T.AXIS_TICK_Y - T.AXIS_TICK_SHORT)], T.INK_SOFT, 1)
                 w = _time_width(c, label, T.FONT_TIME)
                 lx = min(x, T.PLOT_RIGHT - w)   # left-align at the tick, clamp
                 _draw_time(c, lx, T.SUN_LABEL_Y, label, T.FONT_TIME,
                            T.INK, "sans", align="l")
         d += datetime.timedelta(days=1)
 
-    # --- axis line + hour ticks at 3 / 6 / 9 / 12 (ticks hang into night) ---
+    # --- upper axis line + 3h hour ticks (hanging down into the weather row) ---
     c.line([(T.PLOT_LEFT, yt), (T.PLOT_RIGHT, yt)], T.INK_SOFT, 1)
     t = start.replace(minute=0, second=0, microsecond=0)
     while t < start or t.hour % 3 != 0:
@@ -435,6 +439,10 @@ def _draw_title_and_axis(c, ctx, X):
         else:
             c.line([(x, yt), (x, yt + T.AXIS_TICK_SHORT)], T.INK_SOFT, 1)
         t += datetime.timedelta(hours=3)
+
+    # --- lower axis line (no ticks): floor of the weather row, top of night ---
+    c.line([(T.PLOT_LEFT, T.WX_AXIS2_Y), (T.PLOT_RIGHT, T.WX_AXIS2_Y)],
+           T.INK_SOFT, 1)
 
 
 def _galileo_moon(c, cx, cy, r, frac, illum, rng):
@@ -568,8 +576,8 @@ def _draw_moon(c, ctx, X):
             if T.PLOT_LEFT + r < x < T.PLOT_RIGHT - r:
                 # grow downward from the old top edge (top stays put); seed by
                 # transit time so the stipple is stable across refreshes
-                _galileo_moon(c, x, moon_y(a1) - top_pin + r, r, frac, illum,
-                              random.Random(int(ti.timestamp())))
+                _galileo_moon(c, x, moon_y(a1) - top_pin + r + T.MOON_DROP, r,
+                              frac, illum, random.Random(int(ti.timestamp())))
 
 
 def _draw_curve(c, curve, X, now):
@@ -638,6 +646,89 @@ def _draw_temperature(c, ctx, X):
         c.dot(x, y, 3, fill=T.INK_SOFT)
         c.text((x, y - 14 if want_max else y + 14), f"{round(v)}°",
                T.INK_SOFT, "sans", 20, anchor="md" if want_max else "ma")
+
+
+def _is_day(ctx, t):
+    return any(sr <= t < ss for sr, ss in ctx["daylight"])
+
+
+# IBM Carbon weather pictograms (Apache-2.0), pre-rasterized to PNG by
+# tools/fetch_carbon_weather.py so the renderer stays Pillow-only on the Pi.
+_GLYPH_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..",
+                          "assets", "weather")
+_glyph_cache = {}
+
+
+def _glyph_alpha(name, size_dev):
+    """Cached alpha (ink coverage) mask of a Carbon glyph at `size_dev` px."""
+    key = (name, size_dev)
+    if key not in _glyph_cache:
+        path = os.path.join(_GLYPH_DIR, name + ".png")
+        im = Image.open(path).convert("RGBA")
+        _glyph_cache[key] = im.split()[3].resize((size_dev, size_dev),
+                                                  Image.LANCZOS)
+    return _glyph_cache[key]
+
+
+def _place_glyph(c, name, cx, cy, size):
+    """Paste Carbon glyph `name` centered at logical (cx,cy), `size` logical."""
+    sd = _s(size)
+    alpha = _glyph_alpha(name, sd)
+    box = (_s(cx) - sd // 2, _s(cy) - sd // 2)
+    c.img.paste(Image.new("L", (sd, sd), T.INK), box, alpha)
+    c.d = ImageDraw.Draw(c.img)
+
+
+def _condition(wx, t, day):
+    """Pick a Carbon glyph for the forecast at `t`. Clear night -> None (the
+    moon stands in for a clear night)."""
+    kind = wx.precip_kind(t)
+    if kind == "rain":
+        return "rain_heavy" if (wx.precip_prob(t) or 0) >= 70 else "rain"
+    if kind == "snow":
+        return "snow"
+    cov = wx.cloud(t) or 0
+    if cov >= 90:
+        return "overcast"
+    if cov >= 70:
+        return "cloudy"
+    if cov >= 30:
+        return "partly" if day else "cloudy"
+    return "sunny" if day else "constellation"
+
+
+def _tick_times(ctx):
+    """The 3-hour tick times across the window (same marks the axis ticks use)."""
+    start, end = ctx["start"], ctx["end"]
+    t = start.replace(minute=0, second=0, microsecond=0)
+    while t < start or t.hour % 3 != 0:
+        t += datetime.timedelta(hours=1)
+    out = []
+    while t <= end:
+        out.append(t)
+        t += datetime.timedelta(hours=3)
+    return out
+
+
+def _draw_weather(c, ctx, X):
+    """Carbon weather pictograms in their own row between the two axis lines,
+    one every 3 hours centered on the ticks. A clear night shows no glyph (the
+    moon below stands in for it)."""
+    wx = ctx["weather"]
+    size = T.WX_GLYPH_SIZE
+    # Base cadence on the 6-hour marks (midnight / 6am / noon / 6pm); fill an
+    # in-between 3h cell only when the condition changes from the last one
+    # shown, so stable weather stays sparse but transitions still register.
+    last = object()                                  # "unset" sentinel
+    for t in _tick_times(ctx):
+        name = _condition(wx, t, _is_day(ctx, t))
+        primary = (t.hour % 6 == 0)
+        if not (primary or name != last):
+            continue
+        last = name
+        cx = X(t + datetime.timedelta(hours=1.5))    # center of the 3h section
+        if name and T.PLOT_LEFT + size * 0.5 < cx < T.PLOT_RIGHT - size * 0.5:
+            _place_glyph(c, name, cx, T.WX_ROW_Y, size)
 
 
 def _draw_frame(c):

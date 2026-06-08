@@ -1,0 +1,7 @@
+IBM Carbon Design System — Pictograms
+Copyright IBM Corp.
+Licensed under the Apache License, Version 2.0.
+https://github.com/carbon-design-system/carbon  (packages/pictograms)
+
+The PNGs in this directory are rasterized from the Carbon pictogram SVGs by
+tools/fetch_carbon_weather.py for offline (Pillow-only) use on the device.

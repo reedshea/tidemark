@@ -40,16 +40,20 @@ PAD = 54                  # breathing room from border to the drawing area
 PLOT_LEFT = MARGIN + PAD
 PLOT_RIGHT = WIDTH - MARGIN - PAD
 
-# Top "chart furniture", three rows top-to-bottom: day+date, sun times,
-# then the x-axis line (also the night-box ceiling) with its hour ticks.
+# Top "chart furniture", top-to-bottom: day+date, sun times, the x-axis line
+# with hour ticks, then a weather-glyph row, then a second (plain) axis line —
+# the night bands hang from THAT lower line down.
 TITLE_Y = MARGIN + 72             # baseline of the day + date title line
 SUN_LABEL_Y = TITLE_Y + 80        # sunrise / noon / sunset times row
-AXIS_TICK_Y = SUN_LABEL_Y + 24    # x-axis line + ticks; also the night-box top
+AXIS_TICK_Y = SUN_LABEL_Y + 24    # upper x-axis line + ticks
 AXIS_TICK_LONG = 18               # tick length for 6h / midnight marks
 AXIS_TICK_SHORT = 10              # tick length for 3h marks
 
-SKY_TOP = AXIS_TICK_Y             # night bands hang from the axis line down
-MOON_SKY_TOP = AXIS_TICK_Y + 100   # moon rides just below the axis
+WX_ROW_Y = AXIS_TICK_Y + 52       # weather pictogram row (centered on ticks)
+WX_AXIS2_Y = AXIS_TICK_Y + 100    # lower x-axis line (no ticks); night-box top
+
+SKY_TOP = WX_AXIS2_Y             # night bands hang from the lower line down
+MOON_SKY_TOP = WX_AXIS2_Y         # moon rides just below the lower line
 HORIZON_Y = HEIGHT - MARGIN - PAD  # the sea's baseline; engraved fill sits above
 PLOT_TOP = 380            # highest the tide curve can reach
 PLOT_BOTTOM = HORIZON_Y   # curve's low-water floor == horizon
@@ -59,6 +63,11 @@ MOON_STRIP_BOT = PLOT_TOP - 36
 ALT_SCALE = 72.0          # moon altitude (deg) mapped across the moon strip
 
 SEA_LINE_GAP = 13         # vertical spacing of engraved sea hairlines (logical)
+
+# Weather: Carbon pictograms ride in a row just below the axis; the moon is
+# pushed down so it doesn't collide with that row.
+WX_GLYPH_SIZE = 72        # weather pictogram size (logical px)
+MOON_DROP = 60            # how far the moon is nudged below its old position
 
 FOOTER_Y = HEIGHT - MARGIN - 8
 

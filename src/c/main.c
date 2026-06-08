@@ -87,10 +87,24 @@ int main(int argc, char* argv[]) {
     }
 #endif
 
-    // One-shot: display a specific image (style experiments) and exit.
+    // One-shot: display a specific image (style/weather experiments).
     if (image_path != NULL) {
         printf("Displaying image: %s\n", image_path);
         bool ok = display_bitmap(image_path);
+#ifdef PLATFORM_MACOS
+        // Keep the simulator window open until closed, so the image can be
+        // inspected (on the real panel this path just returns).
+        if (ok) {
+            SDL_Event event;
+            bool open = true;
+            while (open) {
+                while (SDL_PollEvent(&event)) {
+                    if (event.type == SDL_QUIT) open = false;
+                }
+                SDL_Delay(16);
+            }
+        }
+#endif
         display_cleanup();
         return ok ? 0 : 1;
     }
