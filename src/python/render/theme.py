@@ -46,8 +46,8 @@ PLOT_RIGHT = WIDTH - MARGIN - PAD
 TITLE_Y = MARGIN + 72             # baseline of the day + date title line
 SUN_LABEL_Y = TITLE_Y + 80        # sunrise / noon / sunset times row
 AXIS_TICK_Y = SUN_LABEL_Y + 24    # upper x-axis line + ticks
-AXIS_TICK_LONG = 18               # tick length for 6h / midnight marks
-AXIS_TICK_SHORT = 10              # tick length for 3h marks
+AXIS_TICK_LONG = 16               # tick length for 6h / midnight marks
+AXIS_TICK_SHORT = 8              # tick length for 3h marks
 
 WX_ROW_Y = AXIS_TICK_Y + 52       # weather pictogram row (centered on ticks)
 WX_AXIS2_Y = AXIS_TICK_Y + 100    # lower x-axis line (no ticks); night-box top
@@ -67,7 +67,7 @@ SEA_LINE_GAP = 13         # vertical spacing of engraved sea hairlines (logical)
 # Weather: Carbon pictograms ride in a row just below the axis; the moon is
 # pushed down so it doesn't collide with that row.
 WX_GLYPH_SIZE = 72        # weather pictogram size (logical px)
-MOON_DROP = 60            # how far the moon is nudged below its old position
+MOON_DROP = 80            # how far the moon is nudged below its old position
 
 FOOTER_Y = HEIGHT - MARGIN - 8
 

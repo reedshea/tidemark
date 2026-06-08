@@ -682,13 +682,13 @@ def _place_glyph(c, name, cx, cy, size):
 _WINDY_MPH = 25            # gust threshold (mph) for the windy glyph
 
 
-def _condition(wx, t, day):
-    """Pick a Carbon glyph for the forecast at `t`. Precip and thunder win over
-    wind, which wins over cloud cover; clear day is sunny, clear night the
-    constellation."""
+def _weather_class(wx, t):
+    """A day/night-agnostic sky class used for change detection (so a pure
+    sunset swap of sun<->constellation is NOT treated as a weather change).
+    Precip/thunder win over wind, which wins over cloud cover."""
     kind = wx.precip_kind(t)
     if kind == "thunder":
-        return "lightning"
+        return "thunder"
     if kind == "snow":
         return "snow"
     if kind == "rain":
@@ -702,8 +702,21 @@ def _condition(wx, t, day):
     if cov >= 70:
         return "cloudy"
     if cov >= 30:
+        return "partly"
+    return "clear"
+
+
+def _condition(wx, t, day):
+    """The Carbon glyph to show: the weather class, but clear and partly skies
+    pick a day vs night form (sun/constellation, partly/cloudy)."""
+    cls = _weather_class(wx, t)
+    if cls == "clear":
+        return "sunny" if day else "constellation"
+    if cls == "partly":
         return "partly" if day else "cloudy"
-    return "sunny" if day else "constellation"
+    if cls == "thunder":
+        return "lightning"
+    return cls
 
 
 def _tick_times(ctx):
@@ -725,16 +738,18 @@ def _draw_weather(c, ctx, X):
     moon below stands in for it)."""
     wx = ctx["weather"]
     size = T.WX_GLYPH_SIZE
-    # Anchor on noon and midnight only; fill another 3h cell (6am/6pm first,
-    # then any cell) only when the condition changes from the last one shown,
-    # so stable weather stays very sparse but transitions still register.
-    last = object()                                  # "unset" sentinel
-    for t in _tick_times(ctx):
-        name = _condition(wx, t, _is_day(ctx, t))
-        primary = t.hour in (0, 12)
-        if not (primary or name != last):
+    # Show a glyph at: the first ("now") cell; the noon/midnight anchors; and any
+    # cell where the WEATHER CLASS changes from the previous cell. Change uses
+    # the day/night-agnostic class, so a plain sunset (sun -> constellation) does
+    # not count as a transition — only real weather shifts do.
+    prev = None
+    for i, t in enumerate(_tick_times(ctx)):
+        cls = _weather_class(wx, t)
+        change = i > 0 and cls != prev
+        prev = cls
+        if not (i == 0 or t.hour in (0, 12) or change):
             continue
-        last = name
+        name = _condition(wx, t, _is_day(ctx, t))
         cx = X(t + datetime.timedelta(hours=1.5))    # center of the 3h section
         if name and T.PLOT_LEFT + size * 0.5 < cx < T.PLOT_RIGHT - size * 0.5:
             _place_glyph(c, name, cx, T.WX_ROW_Y, size)
