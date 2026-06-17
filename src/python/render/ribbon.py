@@ -245,17 +245,23 @@ def _now_marker_rect(X, now):
     The window is anchored to the top of the hour, so between hourly full
     refreshes only the now-marker moves — and it stays within this single
     one-hour-wide column. The host refreshes just this strip every few minutes
-    (partial GC16) and repaints the whole panel when the hour rolls over. The
-    box spans the full curve height so the dot is never clipped as it rides the
-    tide up and down, plus the dot's outer ring and a little label headroom."""
+    (partial GC16) and repaints the whole panel when the hour rolls over.
+
+    The strip spans the FULL panel height, not just the curve. On the IT8951 the
+    source-driver lines for these x-columns run the whole height of the glass, so
+    repeated partial pulses slowly disturb (fade) the bistable pixels in the same
+    columns above the curve — notably the slice of the day/date title that sits
+    over the marker. Refreshing the whole column repaints that header slice crisp
+    every cycle (its content is identical frame-to-frame), so it heals instead of
+    fading. The flash stays confined to this one narrow column."""
     hour0 = now.replace(minute=0, second=0, microsecond=0)
     x0 = X(hour0)
     x1 = X(hour0 + datetime.timedelta(hours=1))
     pad_x = 18                       # now-dot outer ring (12) + slack
     rx0 = int(max(T.PLOT_LEFT, x0 - pad_x))
     rx1 = int(min(T.PLOT_RIGHT, x1 + pad_x))
-    ry0 = int(T.PLOT_TOP - 40)       # headroom for a high-tide crest label
-    ry1 = int(T.HORIZON_Y + 4)       # down to the tick's foot on the horizon
+    ry0 = 0                          # full height: heal header cross-talk in the
+    ry1 = T.HEIGHT                   # marker's columns (date/sun labels above)
     return (rx0, ry0, rx1 - rx0, ry1 - ry0)
 
 

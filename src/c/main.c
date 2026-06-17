@@ -18,7 +18,11 @@
 #include "display/display_layer.h"
 #include "display/display_bitmap.h"
 
-#define REFRESH_INTERVAL 300  // Refresh every 5 minutes (300 seconds)
+// Refresh every 15 minutes. The now-marker is not a clock, so a coarser cadence
+// is fine — and it cuts the partial GC16 refreshes per hour from ~12 to ~4,
+// which proportionally reduces the cross-talk fade those partials leave in the
+// header columns before the hourly full repaint cleans them up.
+#define REFRESH_INTERVAL 900  // Refresh every 15 minutes (900 seconds)
 
 int main(int argc, char* argv[]) {
     // Parse command line arguments
