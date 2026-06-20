@@ -360,7 +360,7 @@ def _draw_engraved_sea(c, curve, nx):
             pts.append((_s(x), _s(yy)))
             x += 4
         if len(pts) >= 2:
-            fd.line(pts, fill=T.SEA_LINE, width=max(1, _s(1)))
+            fd.line(pts, fill=T.SEA_LINE, width=max(1, _s(T.SEA_LINE_W)))
         y += T.SEA_LINE_GAP
         i += 1
 
