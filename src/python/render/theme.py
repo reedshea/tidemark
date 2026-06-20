@@ -25,10 +25,10 @@ def _gc16(v):
 
 INK = _gc16(0)          # primary data line + dark text
 PAPER = _gc16(255)      # background
-INK_SOFT = _gc16(95)    # secondary text / moon dark side
-GRID = _gc16(205)       # hairlines, ticks
-SEA_LINE = _gc16(120)   # engraved hairlines filling the sea below the curve
-NIGHT_SKY = _gc16(238)  # hard-edged night band behind the chart (sky)
+INK_SOFT = _gc16(76)    # secondary text / ticks / moon dark side
+GRID = _gc16(187)       # past (already-happened) curve + extrema
+SEA_LINE = _gc16(102)   # engraved hairlines filling the sea below the curve
+NIGHT_SKY = _gc16(187)  # hard-edged night band behind the chart (sky)
 BORDER = _gc16(150)     # the thin framing rectangle
 
 # Framed composition: a hairline border inset from the panel edge, a sky region
