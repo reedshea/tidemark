@@ -88,14 +88,17 @@ _FONT_DIRS = [
 ]
 
 _FONT_FILES = {
-    # Everything is set in Tufte's ET Book for a unified, framed-print voice;
-    # the sans styles are aliased to ET Book too. DejaVu/Liberation are kept
-    # only as fallbacks should the bundled fonts be missing.
-    "serif": ["roman.ttf", "DejaVuSerif.ttf", "LiberationSerif-Regular.ttf"],
-    "serif_bold": ["semibold.ttf", "bold.ttf", "DejaVuSerif-Bold.ttf",
+    # Everything is set in Tufte's ET Book for a unified, framed-print voice, now
+    # in the SEMIBOLD weight so the type carries across the room; roman is kept
+    # as the next fallback. The sans styles are aliased to ET Book too.
+    # DejaVu/Liberation are only fallbacks should the bundled fonts be missing.
+    "serif": ["semibold.ttf", "roman.ttf", "DejaVuSerif.ttf",
+              "LiberationSerif-Regular.ttf"],
+    "serif_bold": ["bold.ttf", "semibold.ttf", "DejaVuSerif-Bold.ttf",
                    "LiberationSerif-Bold.ttf"],
     "serif_italic": ["italic.ttf", "DejaVuSerif-Italic.ttf"],
-    "sans": ["roman.ttf", "DejaVuSans.ttf", "LiberationSans-Regular.ttf"],
+    "sans": ["semibold.ttf", "roman.ttf", "DejaVuSans.ttf",
+             "LiberationSans-Regular.ttf"],
     "sans_bold": ["bold.ttf", "semibold.ttf", "DejaVuSans-Bold.ttf",
                   "LiberationSans-Bold.ttf"],
 }
