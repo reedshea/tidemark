@@ -25,10 +25,10 @@ def _gc16(v):
 
 INK = _gc16(0)          # primary data line + dark text
 PAPER = _gc16(255)      # background
-INK_SOFT = _gc16(95)    # secondary text / moon dark side
-GRID = _gc16(205)       # hairlines, ticks
-SEA_LINE = _gc16(120)   # engraved hairlines filling the sea below the curve
-NIGHT_SKY = _gc16(238)  # hard-edged night band behind the chart (sky)
+INK_SOFT = _gc16(76)    # secondary text / ticks / moon dark side
+GRID = _gc16(187)       # past (already-happened) curve + extrema
+SEA_LINE = _gc16(102)   # engraved hairlines filling the sea below the curve
+NIGHT_SKY = _gc16(187)  # hard-edged night band behind the chart (sky)
 BORDER = _gc16(150)     # the thin framing rectangle
 
 # Framed composition: a hairline border inset from the panel edge, a sky region
@@ -43,30 +43,35 @@ PLOT_RIGHT = WIDTH - MARGIN - PAD
 # Top "chart furniture", top-to-bottom: day+date, sun times, the x-axis line
 # with hour ticks, then a weather-glyph row, then a second (plain) axis line —
 # the night bands hang from THAT lower line down.
-TITLE_Y = MARGIN + 72             # baseline of the day + date title line
-SUN_LABEL_Y = TITLE_Y + 80        # sunrise / noon / sunset times row
+TITLE_Y = MARGIN + 64             # baseline of the day + date title line
+SUN_LABEL_Y = TITLE_Y + 72        # sunrise / noon / sunset times row
 AXIS_TICK_Y = SUN_LABEL_Y + 24    # upper x-axis line + ticks
 AXIS_TICK_LONG = 16               # tick length for 6h / midnight marks
 AXIS_TICK_SHORT = 8              # tick length for 3h marks
 
-WX_ROW_Y = AXIS_TICK_Y + 52       # weather pictogram row (centered on ticks)
-WX_AXIS2_Y = AXIS_TICK_Y + 100    # lower x-axis line (no ticks); night-box top
+# Weather pictograms ride in their own bar between the two axis lines. The bar
+# height drives the layout below it: the lower axis, the night-band ceiling, and
+# the top of the tide plot all hang off WX_AXIS2_Y.
+WX_BAR_H = 150                    # weather bar height (upper axis -> lower axis)
+WX_ROW_Y = AXIS_TICK_Y + WX_BAR_H // 2   # pictogram row, centered in the bar
+WX_AXIS2_Y = AXIS_TICK_Y + WX_BAR_H      # lower x-axis line (no ticks); night top
 
 SKY_TOP = WX_AXIS2_Y             # night bands hang from the lower line down
 MOON_SKY_TOP = WX_AXIS2_Y         # moon rides just below the lower line
 HORIZON_Y = HEIGHT - MARGIN - PAD  # the sea's baseline; engraved fill sits above
-PLOT_TOP = 380            # highest the tide curve can reach
+PLOT_TOP = WX_AXIS2_Y + 24        # highest the tide curve can reach
 PLOT_BOTTOM = HORIZON_Y   # curve's low-water floor == horizon
 
 MOON_STRIP_TOP = MOON_SKY_TOP
 MOON_STRIP_BOT = PLOT_TOP - 36
 ALT_SCALE = 72.0          # moon altitude (deg) mapped across the moon strip
 
-SEA_LINE_GAP = 13         # vertical spacing of engraved sea hairlines (logical)
+SEA_LINE_GAP = 20         # vertical spacing of engraved sea hairlines (logical)
+SEA_LINE_W = 2            # stroke weight of the engraved sea hairlines (logical)
 
 # Weather: Carbon pictograms ride in a row just below the axis; the moon is
 # pushed down so it doesn't collide with that row.
-WX_GLYPH_SIZE = 72        # weather pictogram size (logical px)
+WX_GLYPH_SIZE = 96        # weather pictogram size (logical px)
 MOON_DROP = 80            # how far the moon is nudged below its old position
 
 FOOTER_Y = HEIGHT - MARGIN - 8
@@ -83,14 +88,17 @@ _FONT_DIRS = [
 ]
 
 _FONT_FILES = {
-    # Everything is set in Tufte's ET Book for a unified, framed-print voice;
-    # the sans styles are aliased to ET Book too. DejaVu/Liberation are kept
-    # only as fallbacks should the bundled fonts be missing.
-    "serif": ["roman.ttf", "DejaVuSerif.ttf", "LiberationSerif-Regular.ttf"],
-    "serif_bold": ["semibold.ttf", "bold.ttf", "DejaVuSerif-Bold.ttf",
+    # Everything is set in Tufte's ET Book for a unified, framed-print voice, now
+    # in the SEMIBOLD weight so the type carries across the room; roman is kept
+    # as the next fallback. The sans styles are aliased to ET Book too.
+    # DejaVu/Liberation are only fallbacks should the bundled fonts be missing.
+    "serif": ["semibold.ttf", "roman.ttf", "DejaVuSerif.ttf",
+              "LiberationSerif-Regular.ttf"],
+    "serif_bold": ["bold.ttf", "semibold.ttf", "DejaVuSerif-Bold.ttf",
                    "LiberationSerif-Bold.ttf"],
     "serif_italic": ["italic.ttf", "DejaVuSerif-Italic.ttf"],
-    "sans": ["roman.ttf", "DejaVuSans.ttf", "LiberationSans-Regular.ttf"],
+    "sans": ["semibold.ttf", "roman.ttf", "DejaVuSans.ttf",
+             "LiberationSans-Regular.ttf"],
     "sans_bold": ["bold.ttf", "semibold.ttf", "DejaVuSans-Bold.ttf",
                   "LiberationSans-Bold.ttf"],
 }
@@ -101,8 +109,8 @@ _cache = {}
 FONT_MIN = 35
 
 # Type scale (logical pt). Dates are the largest; times match the old date size.
-FONT_DATE = 64            # weekday + date titles
-FONT_TIME = 48            # sun times (header) and tide-peak times
+FONT_DATE = 72            # weekday + date titles
+FONT_TIME = 54            # sun times (header) and tide-peak times
 SMALLCAP = 0.72           # am/pm small-cap height relative to the time
 
 

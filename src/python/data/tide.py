@@ -126,6 +126,64 @@ def extreme_range(station, ref_dt, cache_dir=None, days=365,
     return lo, hi
 
 
+def scale_bounds(station, ref_dt, cache_dir=None, days=365, step_minutes=30,
+                 lo_pct=5.0, hi_pct=99.0, max_age_days=30):
+    """Robust vertical-scale bounds (m) from ~`days` of predictions.
+
+    Returns a dict with four water levels:
+      hardmin / hardmax : the true annual extremes (the curve never exceeds
+                          these, so they are the absolute floor/ceiling);
+      floor / ceil      : robust inner bounds at the `lo_pct` / `hi_pct`
+                          percentiles. The renderer maps floor..ceil across the
+                          bulk of the panel height so a *normal* day fills the
+                          space, and gives the thin floor..hardmin (and
+                          ceil..hardmax) tails a compressed "soft knee" band so
+                          the rare spring extremes still dip/peak visibly
+                          instead of flattening against the edge.
+
+    A fixed scale (cached per station) keeps the curve's height meaning the same
+    every render. The year scan is slow, so the result is cached.
+    """
+    name = station.get("name", "station")
+    path = None
+    if cache_dir:
+        cache_dir = os.path.expanduser(cache_dir)
+        safe = "".join(ch if ch.isalnum() else "_" for ch in name)
+        path = os.path.join(cache_dir, f"scale_{safe}.json")
+        try:
+            with open(path) as fh:
+                d = json.load(fh)
+            age = abs((ref_dt - datetime.datetime.fromisoformat(d["computed"]))
+                      .days)
+            if age <= max_age_days and {"hardmin", "hardmax", "floor",
+                                        "ceil"} <= d.keys():
+                return {k: d[k] for k in ("hardmin", "hardmax", "floor", "ceil")}
+        except (OSError, ValueError, KeyError):
+            pass
+
+    resolved = build_constituents(station)
+    mtl = station["mean_tide_level"]
+    n = int(days * 24 * 60 / step_minutes)
+    vals = [predict_height(resolved, mtl,
+                           ref_dt + datetime.timedelta(minutes=i * step_minutes))
+            for i in range(n + 1)]
+    vals.sort()
+
+    def pct(p):
+        return vals[int(round(p / 100.0 * (len(vals) - 1)))]
+
+    bounds = {"hardmin": vals[0], "hardmax": vals[-1],
+              "floor": pct(lo_pct), "ceil": pct(hi_pct)}
+    if path:
+        try:
+            os.makedirs(cache_dir, exist_ok=True)
+            with open(path, "w") as fh:
+                json.dump({**bounds, "computed": ref_dt.isoformat()}, fh)
+        except OSError:
+            pass
+    return bounds
+
+
 def _find_extrema(times, heights):
     """Locate interior local maxima/minima with a parabolic refinement."""
     out = []

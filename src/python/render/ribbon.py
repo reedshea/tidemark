@@ -210,17 +210,38 @@ def render(ctx):
         return T.PLOT_LEFT + (dt - start).total_seconds() / span_s \
             * (T.PLOT_RIGHT - T.PLOT_LEFT)
 
-    # Fixed scale from the station's annual extremes: the annual low sits at the
-    # horizon baseline and the curve fills upward, with headroom for peak labels.
+    # Fixed scale with soft knees. The robust p5/p99 bounds (floor/ceil) map
+    # across the bulk of the plot height, so a normal day fills the panel and
+    # the low troughs sit near the horizon. The rare spring extremes beyond those
+    # bounds aren't clamped flat: floor..hardmin and ceil..hardmax get thin,
+    # compressed knee bands at the very bottom/top, so an unusually low (or high)
+    # tide still reads as a dip (or peak) into that reserved sliver.
     sc = ctx["scale"]
-    lo, hi = to_disp(sc["lo"]), to_disp(sc["hi"])
-    rng = hi - lo
-    y_lo, y_hi = lo - rng * 0.02, hi + rng * 0.10
+    floor, ceil = to_disp(sc["floor"]), to_disp(sc["ceil"])
+    hardmin = min(to_disp(sc["hardmin"]), floor)
+    hardmax = max(to_disp(sc["hardmax"]), ceil)
+    span = (ceil - floor) or 1.0
+    floor -= span * 0.02            # nudge so p5/p99 tides sit just inside the
+    ceil += span * 0.06             # main band rather than exactly on a knee
+
+    Hpx = T.PLOT_BOTTOM - T.PLOT_TOP
+    y_floor = T.PLOT_BOTTOM - Hpx * 0.07     # p5 sits a sliver above the horizon
+    y_ceil = T.PLOT_TOP + Hpx * 0.07         # p99 sits a sliver below the top
 
     def Y(h_m):
         v = to_disp(h_m)
-        return T.PLOT_BOTTOM - (v - y_lo) / (y_hi - y_lo) \
-            * (T.PLOT_BOTTOM - T.PLOT_TOP)
+        if v >= ceil:                        # high soft knee (compressed)
+            if hardmax <= ceil:
+                return y_ceil
+            f = min(1.0, (v - ceil) / (hardmax - ceil))
+            return y_ceil - f * (y_ceil - T.PLOT_TOP)
+        if v <= floor:                       # low soft knee (compressed)
+            if hardmin >= floor:
+                return y_floor
+            f = min(1.0, (floor - v) / (floor - hardmin))
+            return y_floor + f * (T.PLOT_BOTTOM - y_floor)
+        f = (v - floor) / (ceil - floor)     # main band (linear)
+        return y_floor - f * (y_floor - y_ceil)
 
     curve = [(X(t), Y(h)) for t, h in zip(series.times, series.heights)]
 
@@ -339,7 +360,7 @@ def _draw_engraved_sea(c, curve, nx):
             pts.append((_s(x), _s(yy)))
             x += 4
         if len(pts) >= 2:
-            fd.line(pts, fill=T.SEA_LINE, width=max(1, _s(1)))
+            fd.line(pts, fill=T.SEA_LINE, width=max(1, _s(T.SEA_LINE_W)))
         y += T.SEA_LINE_GAP
         i += 1
 
@@ -606,7 +627,8 @@ def _draw_extrema(c, series, X, Y, now):
         ink = T.INK if future else T.GRID
         if e.kind == "H":
             c.dot(x, y, 6, fill=ink)
-            _draw_time(c, x, y - 22, e.time, T.FONT_TIME, T.INK,
+            ly = max(y - 22, T.PLOT_TOP + 10)   # keep the label out of the sky
+            _draw_time(c, x, ly, e.time, T.FONT_TIME, T.INK,
                        "sans", align="m")
         else:
             c.dot(x, y, 5, fill=T.PAPER, outline=ink, width=2)
