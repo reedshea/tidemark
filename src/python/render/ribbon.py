@@ -784,6 +784,9 @@ def _draw_weather(c, ctx, X):
 
 
 def _draw_frame(c):
-    """A hairline border inset from the panel edge — the mat around the print."""
-    c.rect((T.MARGIN, T.MARGIN, T.WIDTH - T.MARGIN, T.HEIGHT - T.MARGIN),
+    """A hairline border inset from the panel edge — the mat around the print.
+    Top/bottom use FRAME_MARGIN_Y so those lines can ride closer to the panel
+    edges (and the physical mat opening) than the left/right lines."""
+    c.rect((T.MARGIN, T.FRAME_MARGIN_Y,
+            T.WIDTH - T.MARGIN, T.HEIGHT - T.FRAME_MARGIN_Y),
            outline=T.BORDER, width=2)

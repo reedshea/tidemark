@@ -34,7 +34,12 @@ BORDER = _gc16(150)     # the thin framing rectangle
 # Framed composition: a hairline border inset from the panel edge, a sky region
 # up top (day labels + moon, with hard-edged night bands), a horizon line, and
 # the engraved sea filling from the tide curve down to the horizon baseline.
-MARGIN = 70               # inset of the framing border from the panel edge
+MARGIN = 70               # inset of the drawing area from the panel edge (L/R)
+# Vertical inset of the drawn framing border (top & bottom). Smaller than MARGIN
+# so the border's top line sits higher and the bottom line lower — closer to the
+# edges of a 6.24" x 4.68" panel's mat opening. (Left/right of the border still
+# use MARGIN.) Nudge this down to push the lines further toward the edges.
+FRAME_MARGIN_Y = 45
 PAD = 54                  # breathing room from border to the drawing area
 
 PLOT_LEFT = MARGIN + PAD
