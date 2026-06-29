@@ -31,11 +31,19 @@ SEA_LINE = _gc16(102)   # engraved hairlines filling the sea below the curve
 NIGHT_SKY = _gc16(187)  # hard-edged night band behind the chart (sky)
 BORDER = _gc16(150)     # the thin framing rectangle
 
-# Framed composition: a hairline border inset from the panel edge, a sky region
-# up top (day labels + moon, with hard-edged night bands), a horizon line, and
-# the engraved sea filling from the tide curve down to the horizon baseline.
-MARGIN = 70               # inset of the framing border from the panel edge
-PAD = 54                  # breathing room from border to the drawing area
+# Composition: a sky region up top (day labels + moon, with hard-edged night
+# bands), a horizon line, and the engraved sea filling from the tide curve down
+# to the horizon baseline.
+#
+# With a physical mat doing the framing, the mat IS the margin — so the printed
+# border is left off (DRAW_BORDER) and the content runs close to the panel edge,
+# filling the mat opening instead of sitting inside a second, redundant frame.
+# For a self-framed "matted print" look with NO physical mat, set DRAW_BORDER =
+# True and raise MARGIN/PAD to open up an internal margin around the keyline.
+DRAW_BORDER = False       # printed hairline border (off: the mat is the frame)
+MARGIN = 58               # inset of the drawing area from the panel edge
+FRAME_MARGIN_Y = 45       # vertical inset of the printed border, when DRAW_BORDER
+PAD = 20                  # extra breathing room from the margin to the drawing area
 
 PLOT_LEFT = MARGIN + PAD
 PLOT_RIGHT = WIDTH - MARGIN - PAD
